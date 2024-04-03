@@ -21,63 +21,10 @@ from sage.data_structures.bitset_base cimport *
 
 from tqdm.auto import tqdm
 
+from local_view import LocalView
+
 # number of non-isomorphic graphs on n vertices
 num_graphs = [1, 1, 2, 4, 11, 34, 156, 1044, 12346, 274668, 12005168]
-
-# A local view of a graph with (optional) preassigned spins
-# This class is a thin wrapper around the sage Graph class
-class LocalView:
-    def  __init__(self, graph, spins, spin_vertices):
-        self._spins = spins
-        self._spin_vertices = spin_vertices
-
-        self._spin_assignment = dict()
-        for (s, x) in zip(spins, spin_vertices):
-            for v in graph.neighbors(x):
-                self._spin_assignment[v] = s
-
-        self._full_graph = graph.copy(immutable=True)
-        _graph = copy(graph)
-        _graph.delete_vertices(spin_vertices)
-        self._graph = _graph.copy(immutable=True)
-
-    def gen_all_spin_assignments(self, tqdm=None):
-        """Generate all possible spin assignments to the vertices of the local view that extend any preassigne spins
-        """
-        if tqdm is None:
-            tqdm = lambda x, *args, **kwargs: x
-
-        unassigned = [v for v in self._graph.vertices() if v not in self._spin_assignment]
-        for sigma_tuple in tqdm(product(self._spins, repeat=len(unassigned)), 
-                                desc="Spin assignments",
-                                total=len(self._spins)**len(unassigned),
-                                leave=False,
-                                position=1):
-            sigma = self._spin_assignment.copy()
-            for v, s in zip(unassigned, sigma_tuple):
-                sigma[v] = s
-            yield {k: sigma[k] for k in sorted(sigma)}
-
-    def show(self, colors=None):
-        """Show the local view with the spins as colors
-        """
-        if colors is None:
-            colors = ['red','blue','green']
-
-        vertex_colors = dict()
-        for c, s in zip(colors, self._spin_vertices):
-            vertex_colors[c] = self._full_graph.neighbors(s)
-
-        return self._graph.show(vertex_colors=vertex_colors)
-
-    # Pass through any other attributes to the underlying graph
-    def __getattr__(self, name):
-        if name == 'spins':
-            return self._spins
-        if name == 'spin_assignment':
-            return self._spin_assignment
-
-        return getattr(self._graph, name)
 
 ### GENERATORS
 # Generate local views where u has d neighbors

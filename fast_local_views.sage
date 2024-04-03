@@ -1,4 +1,6 @@
 # %%
+import os.path
+
 from collections import namedtuple
 from itertools import product
 
@@ -8,6 +10,7 @@ from sage.numerical.mip import MixedIntegerLinearProgram
 from tqdm.autonotebook import tqdm
 
 # Generating local views
+load("local_view.py")
 load("canaug.pyx")
 
 # Ising model computations
@@ -40,7 +43,7 @@ def compute_probabilities(L, B=None, l=None, tqdm=None):
     if l is None:
         l = var("l")
 
-    d = L.degree(0)
+    d = L.G.degree(0)
     pu = 0
     pNu = 0
     Z = 0
@@ -48,17 +51,17 @@ def compute_probabilities(L, B=None, l=None, tqdm=None):
     gNu = [0 for _ in range(d + 1)]
 
     for sigma in L.gen_all_spin_assignments(tqdm):
-        weight = B ** mono(L, sigma) * l ** nplus(L, sigma)
+        weight = B ** mono(L.G, sigma) * l ** nplus(L.G, sigma)
         Z += weight
 
         if sigma[0] == "+":
             pu += weight
-        gu[sum(1 for v in L.neighbors(0) if sigma[v] == "+")] += weight
+        gu[sum(1 for v in L.G.neighbors(0) if sigma[v] == "+")] += weight
 
-        for v in L.neighbors(0):
+        for v in L.G.neighbors(0):
             if sigma[v] == "+":
                 pNu += weight / d
-            gNu[sum(1 for w in L.neighbors(v) if sigma[w] == "+")] += weight / d
+            gNu[sum(1 for w in L.G.neighbors(v) if sigma[w] == "+")] += weight / d
 
     return {
         "pu": pu / Z,
@@ -72,33 +75,39 @@ def compute_probabilities(L, B=None, l=None, tqdm=None):
 # Local view data generation/loading
 LData = namedtuple("LData", ["Ls", "version"])
 DATA_VERSION = 0
-
-
-# def default_filename(d):
-#     return f"data/ising_d{d}.obj"
-
+def default_filename(d):
+    return f"data/ising_d{d}.sobj"
 
 def gen_data(d, filename=None):
-    # if filename is None:
-    #     filename = default_filename(d)
-
+    if filename is None:
+        filename = default_filename(d)
+    
     Ls = []
     for L in gen_local_view_2(d, spins=ising_spins):
         ps = compute_probabilities(L, tqdm=tqdm)
         ps["L"] = L
         Ls.append(ps)
     data = LData(Ls, DATA_VERSION)
-    # save(data, filename)
+    save(data, filename)
     return data
 
-
 def load_data(d, filename=None):
-    return gen_data(d, filename)
-    # if filename is None:
-    #     filename = default_filename(d)
+    if filename is None:
+        filename = default_filename(d)
 
-    # data = load(filename)
-    # return data
+    data = load(filename)
+    return data
+
+def get_data(d, filename=None):
+    if filename is None:
+        filename = default_filename(d)
+
+    if os.path.isfile(filename):
+        data = load_data(d, filename)
+        if data.version == DATA_VERSION:
+            return data
+
+    return gen_data(d, filename)
 
 
 # WARNING: this destructively modifies the input Ls
@@ -135,20 +144,19 @@ def gen_lp(d, Bval, lval, Ls=None, solver="GLPK"):
     p.set_objective(p.sum(L["pu"] * x[i] for i, L in enumerate(Ls)))
     return p
 
-
 # %%
 # WARNING: d=3,4 are tolerable, d=5 is very slow
 d = 3
 
-Ls = gen_data(d).Ls
+Ls = get_data(d).Ls
 
 B, l = var("B, l")
 Kd1 = LocalView(graphs.CompleteGraph(d + 1), ising_spins, [])
 ZKd1 = sum(
-    B ** mono(Kd1, sigma) * l ** nplus(Kd1, sigma)
+    B ** mono(Kd1.G, sigma) * l ** nplus(Kd1.G, sigma)
     for sigma in Kd1.gen_all_spin_assignments()
 )
-occKd1 = l * diff(ln(ZKd1), l) / Kd1.order()
+occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
 
 Bstart = 1 / 100
 Bend = (d - 2) / d
