@@ -126,26 +126,76 @@ def sub_Ls(Ls, Bval, lval):
 
 
 # linear programming
-def gen_lp(d, Bval, lval, Ls=None, solver="GLPK"):
+def gen_lp(d, Bval, lval, Ls=None, solver="GLPK", gams=None, constraints="eq"):
     if Ls is None:
-        Ls = load_data(d).Ls
+        Ls = get_data(d).Ls
+    if gams is None:
+        gams = range(d+1)
     Ls = sub_Ls(Ls, Bval, lval)
 
     p = MixedIntegerLinearProgram(maximization=False, solver=solver)
     x = p.new_variable(nonnegative=True)
 
-    p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) == 1)
-    p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) == 0)
-    for j in range(d + 1):
-        p.add_constraint(
-            p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) == 0
-        )
+    if constraints == "eq":
+        p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) == 1)
+        # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) == 0)
+        for j in gams:
+            p.add_constraint(
+                p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) == 0
+            )
+    elif constraints == "ge":
+        p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) >= 1)
+        # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
+        for j in gams:
+            p.add_constraint(
+                p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) >= 0
+            )
+    else: #constraints == "le":
+        p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) >= 1)
+        # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
+        for j in gams:
+            p.add_constraint(
+                p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) <= 0
+            )               
 
     p.set_objective(p.sum(L["pu"] * x[i] for i, L in enumerate(Ls)))
-    return p
+    return p, x
 
-# %%
-# WARNING: d=3,4 are tolerable, d=5 is very slow
+def investigate_lp(p, verbose=False):
+
+    # convert the program into interactive form so we can see 
+    # the standard form as max x.c such that Ax <= b
+    primal = p.get_backend().interactive_lp_problem().standard_form()
+    dual = primal.dual().standard_form()
+
+    if verbose:
+        print('primal:')
+        show(primal)
+        print()
+        print('dual:')
+        show(dual)
+    
+    print(f"primal val: {primal.optimal_value()}")
+    print(f"dual val:   {dual.optimal_value()}") 
+    
+    
+    y = dual.optimal_solution()
+
+    A = dual.A()
+    b = dual.b()
+
+    show(y)
+    show(A[1:].solve_right(b[1:]))
+
+    tight = []
+    for i, row in enumerate(A):
+        if row*y == b[i]:
+            tight.append(i)
+            print(f'primal constraint {i} is tight')
+
+    return primal, dual, tight
+# %
+# WARNING: d=3,4 are tolerable, d=5 is slow
 d = 3
 
 Ls = get_data(d).Ls
@@ -170,7 +220,7 @@ for Bval in srange(start=Bstart, end=Bend, step=Bstep):
     for lval in srange(start=lstart, end=lend, step=lstep):
         lval = Rational(lval.n(digits=16))
 
-        p = gen_lp(d, Bval, lval, Ls, solver="PPL")
+        p, x = gen_lp(d, Bval, lval, Ls, solver="PPL")
 
         print(
             f"B = {Bval.n(digits=16)}, Bc = {Bend.n(digits=16)}, l = {lval.n(digits=16)}, lc = {lend.n(digits=16)}"
@@ -179,4 +229,43 @@ for Bval in srange(start=Bstart, end=Bend, step=Bstep):
         print(f"\tK_{d+1} =\t{occKd1.subs(B=Bval, l=lval)}")
 
 
+# %%
+d = 4
+Ls = get_data(d).Ls[:-1]
+Bval = 1/3
+lval = 1/10 
+
+B, l = var("B, l")
+Kd1 = LocalView(graphs.CompleteGraph(d + 1), ising_spins, [])
+ZKd1 = sum(
+    B ** mono(Kd1.G, sigma) * l ** nplus(Kd1.G, sigma)
+    for sigma in Kd1.gen_all_spin_assignments()
+)
+occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
+print(f"K_{d+1}:     {occKd1.subs(B=Bval, l=lval)} = {occKd1.subs(B=Bval, l=lval).n()}")
+
+gams = [0,1]
+constraint_type = 'ge'
+p, x = gen_lp(d, Bval, lval, Ls, solver="PPL", gams=gams, constraints=constraint_type)
+print(f"program: {p.solve()} = {p.solve().n()}")
+xvals = p.get_values(x)
+
+print({k: v for k, v in xvals.items() if v > 0})
+print(f"constraint type: {constraint_type}")
+for (i, (lb, (indices, coefficients), ub)) in enumerate(p.constraints()):
+    f = sum(coefficients[j] * x[j] for j in indices)
+    g = sum(coefficients[j] * xvals[j] for j in indices)
+    # print(f"{lb} <= {f} <= {ub}")
+    if lb == ub:
+        # skip equality constraints, of course they hold with equality
+        continue
+
+    if lb is not None:
+        eq = (lb == g)
+        if eq:
+            print(f"c_{i} lb tight: {lb} == {f}")
+    if ub is not None:
+        eq = (ub == g)
+        if eq:
+            print(f"c_{i} ub tight: {ub} == {f}")
 # %%
