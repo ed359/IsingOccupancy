@@ -151,7 +151,7 @@ def gen_lp(d, Bval, lval, Ls=None, solver="GLPK", gams=None, constraints="eq"):
                 p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) >= 0
             )
     else: #constraints == "le":
-        p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) >= 1)
+        p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) <= 1)
         # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
         for j in gams:
             p.add_constraint(
@@ -184,17 +184,26 @@ def investigate_lp(p, verbose=False):
     A = dual.A()
     b = dual.b()
 
-    show(y)
-    show(A[1:].solve_right(b[1:]))
+    # show(y)
+    # show(A[:].solve_right(b[:]))
 
     tight = []
     for i, row in enumerate(A):
         if row*y == b[i]:
             tight.append(i)
-            print(f'primal constraint {i} is tight')
+            print(f'dual constraint {i} is tight')
+
+
+    subA = matrix([A.row(i) for i in tight])
+    subb = vector([b[i] for i in tight])
+
+
+    print(y)
+    print(subA.solve_right(subb))
 
     return primal, dual, tight
-# %
+
+# %%
 # WARNING: d=3,4 are tolerable, d=5 is slow
 d = 3
 
@@ -211,29 +220,31 @@ occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
 Bstart = 1 / 100
 Bend = (d - 2) / d
 Bstep = (Bend - Bstart) / 5
-for Bval in srange(start=Bstart, end=Bend, step=Bstep):
+for Bval in [k*(d-2)/d/100 for k in [50, 92, 96, 99]]:
 
     Bval = Rational(Bval)
     lstart = (lc(d, Bval)/1000).n(digits=16)
     lend = lc(d, Bval)
     lstep = (lend - lstart) / 5
-    for lval in srange(start=lstart, end=lend, step=lstep):
+    for lval in [99/100 * lc(d, Bval)]:
         lval = Rational(lval.n(digits=16))
 
-        p, x = gen_lp(d, Bval, lval, Ls, solver="PPL")
+        p, x = gen_lp(d, Bval, lval, Ls, solver="GLPK")
 
         print(
             f"B = {Bval.n(digits=16)}, Bc = {Bend.n(digits=16)}, l = {lval.n(digits=16)}, lc = {lend.n(digits=16)}"
         )
         print(f"\tprog =\t{p.solve()}")
+        print(f"\tprog =\t{n(p.solve())}")
         print(f"\tK_{d+1} =\t{occKd1.subs(B=Bval, l=lval)}")
+        print(f"\tK_{d+1} =\t{occKd1.subs(B=Bval, l=lval).n()}")
 
 
 # %%
-d = 4
+d = 3
 Ls = get_data(d).Ls[:-1]
-Bval = 1/3
-lval = 1/10 
+Bval = 1/4
+lval = 1/20 
 
 B, l = var("B, l")
 Kd1 = LocalView(graphs.CompleteGraph(d + 1), ising_spins, [])
@@ -244,28 +255,32 @@ ZKd1 = sum(
 occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
 print(f"K_{d+1}:     {occKd1.subs(B=Bval, l=lval)} = {occKd1.subs(B=Bval, l=lval).n()}")
 
-gams = [0,1]
+gams = [0,1,2,3]
 constraint_type = 'ge'
-p, x = gen_lp(d, Bval, lval, Ls, solver="PPL", gams=gams, constraints=constraint_type)
+p, x = gen_lp(d, Bval, lval, Ls, solver="InteractiveLP", gams=gams, constraints=constraint_type)
 print(f"program: {p.solve()} = {p.solve().n()}")
 xvals = p.get_values(x)
 
-print({k: v for k, v in xvals.items() if v > 0})
-print(f"constraint type: {constraint_type}")
-for (i, (lb, (indices, coefficients), ub)) in enumerate(p.constraints()):
-    f = sum(coefficients[j] * x[j] for j in indices)
-    g = sum(coefficients[j] * xvals[j] for j in indices)
-    # print(f"{lb} <= {f} <= {ub}")
-    if lb == ub:
-        # skip equality constraints, of course they hold with equality
-        continue
+# print({k: v for k, v in xvals.items() if v > 0})
+# print(f"constraint type: {constraint_type}")
+# for (i, (lb, (indices, coefficients), ub)) in enumerate(p.constraints()):
+#     f = sum(coefficients[j] * x[j] for j in indices)
+#     g = sum(coefficients[j] * xvals[j] for j in indices)
+#     # print(f"{lb} <= {f} <= {ub}")
+#     if lb == ub:
+#         # skip equality constraints, of course they hold with equality
+#         continue
 
-    if lb is not None:
-        eq = (lb == g)
-        if eq:
-            print(f"c_{i} lb tight: {lb} == {f}")
-    if ub is not None:
-        eq = (ub == g)
-        if eq:
-            print(f"c_{i} ub tight: {ub} == {f}")
+#     if lb is not None:
+#         eq = (lb == g)
+#         if eq:
+#             print(f"c_{i} lb tight: {lb} == {f}")
+#     if ub is not None:
+#         eq = (ub == g)
+#         if eq:
+#             print(f"c_{i} ub tight: {ub} == {f}")
+
+investigate_lp(p)
+
+# %%
 # %%
