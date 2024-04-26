@@ -111,8 +111,8 @@ def gen_local_view_2(d, spins=None, spin_orbits=None):
 def gen_bipartite_edges(A: cython.list, B: cython.list):
     return ((a,b) for a in A for b in B)
 
-def all_assigned_spins(X, Nu, spins):
-    return all(any(X.has_edge(v,s) for s in spins) for v in Nu)
+def all_assigned_spins(X, domain, spins):
+    return all(any(X.has_edge(v,s) for s in spins) for v in domain)
 
 def assign_spins(X, partition, domain, spins, aut_gens):
     cY_can:     DenseGraph
@@ -129,9 +129,11 @@ def assign_spins(X, partition, domain, spins, aut_gens):
         return
     
     # uppers are the possible spin assignments to proceed with
-    uppers = {f for f in gen_bipartite_edges(domain, spins) if not X.has_edge(f)}
+    unassigned = [v for v in domain if not any(X.has_edge(v,s) for s in spins)]
+    uppers = {f for f in gen_bipartite_edges(unassigned, spins) if not X.has_edge(f)}
+
     # use the automorphism group to do some isomorphism checking
-    upper_reps = find_upper_reps(aut_gens, uppers, False)
+    upper_reps = find_upper_reps(aut_gens, uppers)
     for e in upper_reps:
         # Y is X augmented with e; cY is the underlying C graph
         Y = copy(X)
@@ -162,7 +164,7 @@ def reverse(t: cython.tuple) -> cython.tuple:
     return (t[1], t[0])
 
 @cython.cfunc
-def find_upper_reps(aut_gens: cython.list, uppers: cython.set, end_sort: cython.bint) -> cython.list:
+def find_upper_reps(aut_gens: cython.list, uppers: cython.set) -> cython.list:
     """
     Compute a list of representatives of each isomorphism class of uppers under
     the action of the permutation group given by aut_gens
@@ -189,10 +191,7 @@ def find_upper_reps(aut_gens: cython.list, uppers: cython.set, end_sort: cython.
         for e in orbit:
             uppers.discard(e)
 
-    if end_sort:
-        return sorted([orbit[0] for orbit in orbits], key=reverse)
-    else:
-        return sorted([orbit[0] for orbit in orbits])
+    return sorted([orbit[0] for orbit in orbits])
 
 @cython.cfunc
 def find_orbit(e: cython.tuple, aut_gens: cython.list) -> cython.list:
