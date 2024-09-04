@@ -283,4 +283,27 @@ xvals = p.get_values(x)
 investigate_lp(p)
 
 # %%
+
+
 # %%
+d = 3
+Ls = get_data(d).Ls[:-1] # no K_{d+1} please
+if d == 3:
+    tight = [15, 20, 21]
+elif d == 4:
+    tight = [198, 206, 216, 228]
+else:
+    raise ValueError(f"no plan for d={d}")
+
+Atranspose = matrix([
+    [1] + [Ls[t]["gu"][j] - Ls[t]["gNu"][j] for j in range(d-1)] for t in tight
+])
+c = vector(Ls[t]["pu"] for t in tight)
+ys = Atranspose.solve_right(c)
+
+# TODO: prove for all Ls, ys[0] + sum(ys[j] * (L["gu"][j] - L["gNu"][j]) for j in range(d-1)) <= L["pu"]
+for i, L in enumerate(Ls):
+    ineq = (ys[0] + sum(ys[j+1] * (L["gu"][j] - L["gNu"][j]) for j in range(d-1)) <= L["pu"])
+    print(ineq)
+    if not((ys[0] + sum(ys[j+1] * (L["gu"][j] - L["gNu"][j]) for j in range(d-1)) <= L["pu"]).subs(B=16/100,l=19/1000)):
+        print(f"counterexample found at index {i}")
