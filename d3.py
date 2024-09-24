@@ -1,25 +1,24 @@
-# %%
 # Dependencies:
 #   sagemath, tested with version >= 10.2
 #   tqdm, installed below
 #   wolfram engine with the wolframscript command in the PATH
 
-%pip install tqdm
-
-# %%
-
+# %% Imports
 import os.path
 import subprocess
 import sys
 
 from collections import namedtuple
-from itertools import product
 
-from sage.all import diff, graphs, ln, load, Rational, save, srange, sqrt, var
+from sage.all import diff, graphs, ln, load, save, sqrt, var, matrix, vector
 from sage.numerical.mip import MixedIntegerLinearProgram
 
 from tqdm.autonotebook import tqdm
 
+# %% Install tqdm through pip
+subprocess.check_call([sys.executable, "-m", "pip", "install", "tqdm"])
+
+# %%
 # Generating local views
 load("local_view.py")
 load("canaug.pyx")
@@ -91,6 +90,8 @@ def gen_data(d, filename=None):
     if filename is None:
         filename = default_filename(d)
     
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
     Ls = []
     for L in gen_local_view_2(d, spins=ising_spins):
         ps = compute_probabilities(L, tqdm=tqdm)
