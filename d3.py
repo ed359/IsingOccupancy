@@ -3,6 +3,9 @@
 #   tqdm, installed below
 #   wolfram engine with the wolframscript command in the PATH
 
+# %% Install tqdm through pip
+subprocess.check_call([sys.executable, "-m", "pip", "install", "tqdm"])
+
 # %% Imports
 import os.path
 import subprocess
@@ -14,9 +17,6 @@ from sage.all import diff, graphs, ln, load, save, sqrt, var, matrix, vector
 from sage.numerical.mip import MixedIntegerLinearProgram
 
 from tqdm.autonotebook import tqdm
-
-# %% Install tqdm through pip
-subprocess.check_call([sys.executable, "-m", "pip", "install", "tqdm"])
 
 # %%
 # Generating local views
