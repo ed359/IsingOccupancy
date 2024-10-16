@@ -123,7 +123,8 @@ def sub_Ls(Ls, Bval, lval):
 
 
 # linear programming
-def gen_lp(d, Bval, lval, Ls=None, solver="GLPK", gams=None, constraints="eq", mflip=[]):
+# mflips is a list of indices for Ls we want to add constraints for by flipping a - to a +
+def gen_lp(d, Bval, lval, Ls=None, solver="GLPK", gams=None, constraints="eq", mflips=[]):
     if Ls is None:
         Ls = get_data(d).Ls
     if gams is None:
@@ -155,15 +156,35 @@ def gen_lp(d, Bval, lval, Ls=None, solver="GLPK", gams=None, constraints="eq", m
                 p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) <= 0
             )
 
-    # for i, Lm in enumerate(mflip):
-    #     markedm = ways of marking a - in Lm
-    #     orbitms = partitioning of markedm into orbits of the automorphism group
-    #     for orbitm in orbitms:
-    #         (Lm, w) = orbitm[0]
-    #         Lp = Lm.flip(w)
-    #         orbitp = orbit of (Lp, w)
-    #         j = the index of Lp in Ls
-    #         p.add_constraint(len(orbitm)*x[i] >= Bval**d/lamval * len(orbitp) * x[j])
+    for i in mflips:
+        Lm = Ls[i]["L"]
+        ms = set(w for w in Lm.N2u if Lm.spin_assignment[w] == "-")
+        # print(f"mflip index {i}")
+        # Lm.show()
+
+        orbitms = []
+        while ms:
+            w = next(iter(ms))
+            orbit = set(Lm.orbit(w))
+            ms -= orbit
+            orbitms.append(orbit)
+        print(f"mflip index {i}: orbitms = {orbitms}")
+
+        for orbitm in orbitms:
+            w = next(iter(orbitm))
+            # print(f"mflip index {i}: orbitm = {orbitm}, w={w}")
+            Lp = Lm.change_spin(w)
+            # Lp.show()
+            orbitp = set(Lp.orbit(w))
+            # print(f"mflip index {i}: orbitp = {orbitp}")
+
+            Lpcan = Lp.fullG_can_fixed_spins
+            j = 0
+            while (Ls[j]['L'].fullG_can_fixed_spins != Lpcan):
+                j += 1
+
+            p.add_constraint(len(orbitm)*x[i] >= Bval**d/lval * len(orbitp) * x[j])
+            print(f"mflip index {i}: constraint {len(orbitm)} * x[{i}] >= B^{d}/lam * {len(orbitp)} * x[{j}]")
     
 
     p.set_objective(p.sum(L["pu"] * x[i] for i, L in enumerate(Ls)))
