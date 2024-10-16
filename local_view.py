@@ -1,10 +1,25 @@
 from copy import copy
-from itertools import product
+from itertools import product, cycle
+from functools import cached_property
+
+def invalidate_cached_properties(obj):
+    cls = type(obj)
+    cached = {
+        attr
+        for attr in list(obj.__dict__.keys())
+        if (descriptor := getattr(cls, attr, None))
+        if isinstance(descriptor, cached_property)
+    }
+    for attr in cached:
+        del obj.__dict__[attr]
+
 
 # A local view of a graph with (optional) preassigned spins
 # This class is a thin wrapper around the sage Graph class
 class LocalView(object):
     def  __init__(self, full_graph, spins, spin_vertices):
+        self.fullG = full_graph.copy(immutable=True)
+        self.spin_vertices = spin_vertices
         self.spins = spins
 
         self.spin_assignment = dict()
@@ -15,6 +30,61 @@ class LocalView(object):
         G = copy(full_graph)
         G.delete_vertices(spin_vertices)
         self.G = G.copy(immutable=True)
+
+    # Properties
+    @cached_property
+    def u(self):
+        return 0
+
+    @cached_property
+    def Nu(self):
+        return self.G.neighbors(self.u)
+    
+    @cached_property
+    def N2u(self):
+        N2u = set()
+        for v in self.Nu:
+            N2u.update({w for w in self.G.neighbors(v)})
+        return list(N2u - set(self.G.neighbors(self.u, closed=True)))
+
+    @cached_property
+    def fullG_partition_fixed_spins(self):
+        partition = [[self.u], 
+                     self.Nu,
+                     [w for w in self.fullG.vertices() if w != self.u and w not in self.Nu and w not in self.spin_vertices],
+                    ]
+        partition.extend([s] for s in self.spin_vertices)
+        return partition
+
+    @cached_property
+    def fullG_partition_permute_spins(self):
+        partition = [[self.u], 
+                     self.Nu,
+                     [w for w in self.fullG.vertices() if w != self.u and w not in self.Nu and w not in self.spin_vertices],
+                    ]
+        partition.append(self.spin_vertices)
+        return partition            
+
+
+    @cached_property
+    def fullG_aut_fixed_spins(self):
+        return self.fullG.automorphism_group(partition=self.fullG_partition_fixed_spins)
+
+    @cached_property
+    def fullG_aut_permute_spins(self):
+        return self.fullG.automorphism_group(partition=self.fullG_partition_permute_spins)
+
+    @cached_property
+    def fullG_can_fixed_spins(self):
+        return self.fullG.canonical_label(partition=self.fullG_partition_fixed_spins)
+
+    @cached_property
+    def fullG_can_permute_spins(self):
+        return self.fullG.canonical_label(partition=self.fullG_partition_permute_spins)
+
+    # Methods
+    def copy(self):
+        return LocalView(self.fullG, self.spins, self.spin_vertices)
 
     def gen_all_spin_assignments(self, tqdm=None):
         """Generate all possible spin assignments to the vertices of the local view that extend any preassigne spins
@@ -37,7 +107,7 @@ class LocalView(object):
         """Show the local view with the spins as colors
         """
         if colors is None:
-            colors = ['red','blue','green']
+            colors = cycle(['red','blue','green','orange','purple','brown','pink','cyan','magenta','yellow'])
 
         vertex_colors = dict()
         for c, s in zip(colors, self.spins):
@@ -45,19 +115,18 @@ class LocalView(object):
 
         return self.G.show(vertex_colors=vertex_colors)
 
-    def u(self):
-        return 0
-
-    def Nu(self):
-        return self.G.neighbors(self.u())
+    def orbit(self, w, fixed_spins=True):
+        if fixed_spins:
+            return self.fullG_aut_fixed_spins.orbit(w)
+        else:
+            return self.fullG_aut_permute_spins.orbit(w)
     
-    def N2u(self):
-        closedNu = {self.u} | set(self.Nu())
-        return [w for w in self.G.vertices() if v not in closedNu]
+    def change_spin(self, w, s=None):
+        # If there are two spins, s defaults to the other spin
+        if s is None:
+            s = self.spins[1 - self.spins.index(self.spin_assignment[w])]
 
-    def flip(self, w):
-        # return a copy of self with the spin of w flipped
-
-    def marked_orbit(self, w):
-        # return the orbit of self with w marked under aut(self) in the form [(L, w) ...]
-        pass
+        fullG = self.fullG.copy(immutable=False)
+        fullG.delete_edge(w, self.spin_vertices[self.spins.index(self.spin_assignment[w])])
+        fullG.add_edge(w, self.spin_vertices[self.spins.index(s)])
+        return LocalView(fullG, self.spins, self.spin_vertices)
