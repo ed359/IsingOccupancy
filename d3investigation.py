@@ -5,6 +5,7 @@ d = 3
 gen_data(d) # regenerate data
 Ls = get_data(d).Ls # do not exclude K_4
 gams = list(range(d+1)) # all the gamma constraints [0,...,d]
+mflips = range(len(Ls))
 
 B, l = var("B, l")
 Kd1 = LocalView(graphs.CompleteGraph(d + 1), ising_spins, [])
@@ -14,24 +15,36 @@ ZKd1 = sum(
 )
 occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
 
-# %%
+# %% Run primal LP with rational sage solver
 Bval = 32/100
 lval = Rational(lc(d,Bval).n(digits=100))
 occKd1val = occKd1.subs(B=Bval, l=lval)
 
 constraint_type = 'eq'
-mflips = range(len(Ls))
-p, x = gen_lp(d, Bval, lval, Ls, solver="InteractiveLP", gams=gams, constraints=constraint_type, mflips=mflips)
-occlb = p.solve()
+p1, x1 = gen_lp(d, Bval, lval, Ls, solver="PPL", gams=gams, constraints=constraint_type, mflips=mflips)
+occlb1 = p1.solve()
 print(f"B: {Bval.n()}, l: {lval.n()}")
 print(f"K_{d+1}:     {occKd1val.n()}")
-print(f"program: {occlb.n()}")
-if occlb >= occKd1val:
+print(f"program: {occlb1.n()}")
+if occlb1 >= occKd1val:
     print("Good, program is at least K_4")
-    # investigate_lp(p)
 else:
     print("Bad, program without K_4 is less than K_4")
 
+# %% Run primal LP with exact solver over algebraic reals
+Bval = 32/100
+lval = lc(d,Bval)
+occKd1val = occKd1.subs(B=Bval, l=lval)
+
+p2, x2 = gen_lp_via_poly(d, Bval, lval, Ls, gams, mflips)
+occlb2 = -p2.solve()
+print(f"B: {Bval.n()}, l: {lval.n()}")
+print(f"K_{d+1}:     {occKd1val.n()}")
+print(f"program: {occlb2.n()}")
+if occlb2 >= occKd1val:
+    print("Good, program is at least K_4")
+else:
+    print("Bad, program without K_4 is less than K_4")
 
 
 
