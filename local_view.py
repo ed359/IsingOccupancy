@@ -44,3 +44,20 @@ class LocalView(object):
             vertex_colors[c] = [v for v, t in self.spin_assignment.items() if s == t]
 
         return self.G.show(vertex_colors=vertex_colors)
+
+    def u(self):
+        return 0
+
+    def Nu(self):
+        return self.G.neighbors(self.u())
+    
+    def N2u(self):
+        closedNu = {self.u} | set(self.Nu())
+        return [w for w in self.G.vertices() if v not in closedNu]
+
+    def flip(self, w):
+        # return a copy of self with the spin of w flipped
+
+    def marked_orbit(self, w):
+        # return the orbit of self with w marked under aut(self) in the form [(L, w) ...]
+        pass
