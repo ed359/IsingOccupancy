@@ -1,120 +1,190 @@
 # How to run this code
 # Install sagemath (10.2 or later)
-# run "%pip install tqdm" in a sage cell to install dependencies
 # run "load('canaug.pyx')" in a cell to compile the code
 
 import cython
 
-from copy import copy
+from copy import copy, deepcopy
 
 from cysignals.signals cimport sig_check
 from cysignals.memory cimport sig_free, sig_malloc
 
-from itertools import product
+from sage.data_structures.bitset_base cimport *
 
 from sage.graphs.base.c_graph cimport CGraph
 from sage.graphs.base.dense_graph cimport DenseGraph
 from sage.graphs.graph import Graph
 from sage.graphs.graph_generators import graphs
 from sage.groups.perm_gps.partn_ref.data_structures cimport *
-from sage.data_structures.bitset_base cimport *
 
-from tqdm.auto import tqdm
+from sage.plot.plot import graphics_array
 
 from local_view import LocalView
 
-# number of non-isomorphic graphs on n vertices
-num_graphs = [1, 1, 2, 4, 11, 34, 156, 1044, 12346, 274668, 12005168]
-
-### GENERATORS
-# Generate local views where u has d neighbors
-# there is graph structure on Nu, and assign spins to Nu
-def gen_local_view_1(d, spins=None, spin_orbits=None):
-
+def gen_local_views(d, spin_depth=1, spins=None, spin_orbits=None, verbose=False, tqdm=None):
     if spins is None:
         spins = [0,1]
     if spin_orbits is None:
         spin_orbits = [[s] for s in spins]
+    if tqdm is None:
+        tqdm = lambda x, *args, **kwargs: x
 
-    u = 0
-    Nu = list(range(1,d+1))
+    G = Graph(1, data_structure='dense', loops=False, multiedges=False)
+    data = [(G, [[0]], [0])]
 
-    # enumerate Nu graph structure
-    for G_Nu in tqdm(graphs(d), desc="N(u) graph structure", total=num_graphs[d], position=0):
+    for i in tqdm(range(spin_depth-1)):
+        if verbose:
+            print(f'Adding layer {i+1} starting with {len(data)} graphs')
+        data = list(add_new_layer(d, data))
+        if verbose:
+            print(f'Filling layer {i+1} starting with {len(data)} graphs')
+        data = list(fill_layer(d, data))
 
-        # Construct G and Nu
-        G = Graph(d+1, data_structure="dense")
-        for v in Nu:
-            G.add_edge(u,v)
+    if verbose:
+        print(f'Adding layer {spin_depth} disjointly to {len(data)} graphs')
+    data = list(add_new_layer_disjoint(d, data))
+    if verbose:
+        print(f'Assigning spins to layer {spin_depth} starting with {len(data)} graphs')
+    yield from assign_spins(d, data, spins, spin_orbits)
 
-        # Add graph structure to Nu
-        for (v,w) in G_Nu.edges(labels=False):
-            G.add_edge(v+1,w+1)
+def gen_local_view_1(d, spins, spin_orbits):
+    yield from gen_local_views(d, 1, spins, spin_orbits)
 
-        spin_indices = {s: G.add_vertex() for s in spins}
-        spin_vertices = list(spin_indices.values())
+def gen_local_view_2(d, spins, spin_orbits):
+    yield from gen_local_views(d, 2, spins, spin_orbits)
 
-        partition = [[u], Nu] + [[spin_indices[s] for s in orbit] for orbit in spin_orbits]
+############
+# LAYER CODE
+def add_new_layer(d, data):
+    for (G, last_partition, last_layer) in data:
+        next_layer = []
+        for v in last_layer:
+            for w in range(d-G.degree(v)):
+                next_layer.append(G.add_vertex())
         
-        # Assign spins to Nu
+        partition = last_partition + [next_layer]
         aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-        for X in assign_spins(G, partition, Nu, spin_vertices, aut_gens):
-            yield LocalView(X, spins, spin_vertices)
+        for X in canaug_new_layer(d, G, partition, last_layer, next_layer, aut_gens):
+            clean_X = copy(X)
+            clean_partition = deepcopy(partition)
+            clean_next_layer = copy(next_layer)
+            for v in next_layer:
+                if clean_X.degree(v) == 0:
+                    clean_X.delete_vertex(v)
+                    clean_partition[-1].remove(v)
+                    clean_next_layer.remove(v)
+            if not clean_partition[-1]:
+                clean_partition.pop()
+            yield (clean_X, clean_partition, clean_next_layer)
 
-# Generate local views where u has d neighbors
-# there is graph structure on Nu, add second 
-# neighbors of u (pariwise disjointly) and assign spins to Nu
-def gen_local_view_2(d, spins=None, spin_orbits=None):
+def add_new_layer_disjoint(d, data):
+    for (G, last_partition, last_layer) in data:
+        next_layer = []
+        for v in last_layer:
+            Nv = []
+            for w in range(d-G.degree(v)):
+                Nv.append(G.add_vertex())
+            G.add_edges((v, w) for w in Nv)
+            next_layer.extend(Nv)
+        partition = deepcopy(last_partition + [next_layer])
+        yield (G, partition, next_layer)
 
-    if spins is None:
-        spins = [0,1]
-    if spin_orbits is None:
-        spin_orbits = [[s] for s in spins]
+def fill_layer(d, data):
+    for (G, partition, layer) in data:
+        aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
+        for X in canaug_fill_layer(d, G, partition, layer, aut_gens):
+            yield (X, partition, layer)
 
-    u = 0
-    Nu = list(range(1,d+1))
-
-    # enumerate Nu graph structure
-    for G_Nu in tqdm(graphs(d), desc="N(u) graph structure", total=num_graphs[d], position=0):
-
-        # Construct G and Nu
-        G = Graph(d+1, data_structure="dense")
-        for v in Nu:
-            G.add_edge(u,v)
-
-        # Add graph structure to Nu
-        for (v,w) in G_Nu.edges(labels=False):
-            G.add_edge(v+1,w+1)
-
-        # Add N2u
-        for v in Nu:
-            dv = G.degree(v)
-            G.add_edges((v,G.add_vertex()) for w in range(d-dv))
-
-        N2u = list(range(d+1, G.order()))
-
+##############
+# ASSIGN SPINS
+def assign_spins(d, data, spins, spin_orbits):
+    for (G, partition, layer) in data:
         spin_indices = {s: G.add_vertex() for s in spins}
         spin_vertices = list(spin_indices.values())
 
-        partition = [[u], Nu]
-        if N2u: 
-            partition += [N2u]
         partition += [[spin_indices[s] for s in orbit] for orbit in spin_orbits]
-
-        # Assign spins to Nu
         aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-        for X in assign_spins(G, partition, N2u, spin_vertices, aut_gens):
-            yield LocalView(X, spins, spin_vertices)
+        for X in canaug_assign_spins(G, partition, layer, spin_vertices, aut_gens):
+            yield LocalView(X, copy(spins), copy(spin_vertices), deepcopy(partition))
 
-@cython.cfunc
-@cython.inline
-def gen_bipartite_edges(A: cython.list, B: cython.list):
-    return ((a,b) for a in A for b in B)
+#############
+# CANAUG CODE
+def canaug_new_layer(d, X, partition, last_layer, new_layer, aut_gens):
+    cY_can:     DenseGraph
+    mY:         cython.list
+    upper_reps: cython.list
+    uppers:     cython.set
+    e:          cython.tuple
+    ystar:      cython.tuple
+    ystar_orig: cython.tuple
+    
+    unfinished_last = [v for v in last_layer if X.degree(v) < d]
+    unfinished_new = [v for v in new_layer if X.degree(v) < d]
 
-def all_assigned_spins(X, domain, spins):
-    return all(any(X.has_edge(v,s) for s in spins) for v in domain)
+    # yield the local view if all elements of the last layer now have degree d
+    if not unfinished_last:
+        yield X
+        return
 
-def assign_spins(X, partition, domain, spins, aut_gens):
+    uppers = {f for f in gen_bipartite_edges(unfinished_last, unfinished_new) if not X.has_edge(f)}
+
+    # use the automorphism group to do some isomorphism checking
+    upper_reps = find_upper_reps(aut_gens, uppers)
+    for e in upper_reps:
+        # Y is X augmented with e; cY is the underlying C graph
+        Y = copy(X)
+        Y.add_edge(e)
+
+        # compute the automorphism group of Y and the canonical labeling
+        Y_aut_gens, cY_can, cr = search_tree(Y._backend.c_graph()[0], partition, True, True)
+        icr = {v: k for k, v in cr.items()} # inverse of relableling
+        last_layer_can = sorted(cr[v] for v in last_layer)
+        new_layer_can = sorted(cr[v] for v in new_layer)
+        ystar = max(f for f in gen_bipartite_edges(last_layer_can, new_layer_can) if cY_can.has_arc(f[0], f[1]))
+        ystar_orig = tuple(sorted([icr[ystar[0]], icr[ystar[1]]]))
+
+        mY = find_orbit(ystar_orig, Y_aut_gens)
+        if e in mY:
+            yield from canaug_new_layer(d, Y, partition, last_layer, new_layer, Y_aut_gens)
+
+
+def canaug_fill_layer(d, X, partition, layer, aut_gens):
+    cY_can:     DenseGraph
+    mY:         cython.list
+    upper_reps: cython.list
+    uppers:     cython.set
+    e:          cython.tuple
+    ystar:      cython.tuple
+    ystar_orig: cython.tuple
+    
+    yield X
+
+    unfinished = [v for v in layer if X.degree(v) < d]
+    if not unfinished:
+        return
+
+    uppers = {f for f in gen_all_edges(unfinished) if not X.has_edge(f)}
+
+    # use the automorphism group to do some isomorphism checking
+    upper_reps = find_upper_reps(aut_gens, uppers)
+    for e in upper_reps:
+        # Y is X augmented with e; cY is the underlying C graph
+        Y = copy(X)
+        Y.add_edge(e)
+
+        # compute the automorphism group of Y and the canonical labeling
+        Y_aut_gens, cY_can, cr = search_tree(Y._backend.c_graph()[0], partition, True, True)
+        icr = {v: k for k, v in cr.items()} # inverse of relableling
+        layer_can = sorted(cr[v] for v in layer)
+        ystar = max(f for f in gen_all_edges(layer_can) if cY_can.has_arc(f[0], f[1]))
+        ystar_orig = tuple(sorted([icr[ystar[0]], icr[ystar[1]]]))
+
+        mY = find_orbit(ystar_orig, Y_aut_gens)
+        if e in mY:
+            yield from canaug_fill_layer(d, Y, partition, layer, Y_aut_gens)
+
+
+def canaug_assign_spins(X, partition, domain, spins, aut_gens):
     cY_can:     DenseGraph
     mY:         cython.list
     upper_reps: cython.list
@@ -141,7 +211,7 @@ def assign_spins(X, partition, domain, spins, aut_gens):
 
         # compute the automorphism group of Y and the canonical labeling
         Y_aut_gens, cY_can, cr = search_tree(Y._backend.c_graph()[0], partition, True, True)
-        icr = {v: k for k, v in cr.iteritems()} # inverse of relableling
+        icr = {v: k for k, v in cr.items()} # inverse of relableling
         domain_can = sorted(cr[v] for v in domain)
         spins_can = sorted(cr[v] for v in spins)
         ystar = max(f for f in gen_bipartite_edges(domain_can, spins_can) if cY_can.has_arc(f[0], f[1]))
@@ -149,8 +219,25 @@ def assign_spins(X, partition, domain, spins, aut_gens):
 
         mY = find_orbit(ystar_orig, Y_aut_gens)
         if e in mY:
-            yield from assign_spins(Y, partition, domain, spins, Y_aut_gens)
+            yield from canaug_assign_spins(Y, partition, domain, spins, Y_aut_gens)
 
+
+################
+# CANAUG HELPERS
+@cython.cfunc
+@cython.inline
+def gen_bipartite_edges(A: cython.list, B: cython.list):
+    return ((a,b) for a in A for b in B)
+
+@cython.cfunc
+@cython.inline
+def gen_all_edges(A: cython.list):
+    return ((A[i],A[j]) for i in range(len(A)) for j in range(i+1,len(A)))
+
+@cython.cfunc
+@cython.inline
+def all_assigned_spins(X, domain, spins):
+    return all(any(X.has_edge(v,s) for s in spins) for v in domain)
 @cython.cfunc
 @cython.inline
 def permute_edge(e: cython.tuple, gen: cython.list) -> cython.tuple:
@@ -163,7 +250,7 @@ def permute_edge(e: cython.tuple, gen: cython.list) -> cython.tuple:
 def reverse(t: cython.tuple) -> cython.tuple:
     return (t[1], t[0])
 
-@cython.cfunc
+@cython.ccall
 def find_upper_reps(aut_gens: cython.list, uppers: cython.set) -> cython.list:
     """
     Compute a list of representatives of each isomorphism class of uppers under
@@ -193,7 +280,7 @@ def find_upper_reps(aut_gens: cython.list, uppers: cython.set) -> cython.list:
 
     return sorted([orbit[0] for orbit in orbits])
 
-@cython.cfunc
+@cython.ccall
 def find_orbit(e: cython.tuple, aut_gens: cython.list) -> cython.list:
     """
     Compute the orbit of an edge under the action of a permutation group
@@ -477,7 +564,7 @@ cdef int refine_by_degree(PartitionStack *PS, void *S, int *cells_to_refine_by, 
     else:
         return 0
     
-cdef search_tree(DenseGraph G, list partition, bint lab, bint certificate):
+cpdef search_tree(DenseGraph G, list partition, bint lab, bint certificate):
     """
     Compute automorphism groups and canonical labels of graphs. This function 
     is copied from sage.groups.perm_groups.partn_ref.refinement_graphs (v8.0 
