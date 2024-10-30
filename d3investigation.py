@@ -1,5 +1,5 @@
 # %%
-load("local_occupancy/ising_occ.py")
+load("ising_occ.py")
 
 # %%
 d = 3
@@ -64,14 +64,14 @@ occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
 
 # %% Run primal LP with rational sage solver
 Ls = get_data(d, spin_depth).Ls # do not exclude K_4
-Bval = 1/3
-lval = Rational(lc(d,Bval).n(digits=5))
+Bval = 33/100
+lval = Rational(lc(d,Bval).n(digits=50))
 occKd1val = occKd1.subs(B=Bval, l=lval)
 print('Loaded data...')
 constraint_type = 'eq'
 p1, x1 = gen_lp(d, spin_depth, Bval, lval, Ls, solver="PPL", gams=gams, constraints=constraint_type, mflips=mflips)
 K4idx = len(Ls)-1
-p1.add_constraint(x1[K4idx]==0)
+# p1.add_constraint(x1[K4idx]==0)
 print('solving...')
 occlb1 = p1.solve()
 print(f"B: {Bval.n()}, l: {lval.n()}")
