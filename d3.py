@@ -4,16 +4,17 @@
 #   wolfram engine with the wolframscript command in the PATH
 
 # %% Install tqdm through pip
-subprocess.check_call([sys.executable, "-m", "pip", "install", "tqdm"])
+# subprocess.check_call([sys.executable, "-m", "pip", "install", "tqdm"])
 
 # %% Imports
-from tqdm.autonotebook import tqdm
+# from tqdm.autonotebook import tqdm
 
 load("ising_occ.py")
 
 # %% Setup
 d = 3
-Ls = get_data(d).Ls[:-1] # exclude K_4
+spin_depth = 2
+Ls = get_data(d, spin_depth).Ls[:-1] # exclude K_4
 gams = list(range(d-1)) # [0,...,d-2]
 
 B, l = var("B, l")
@@ -47,9 +48,9 @@ lc[d_, B_] := Block[{{r,s,Bca}},(((1 + Sqrt[r s])/(1 - Sqrt[r s]))^((Bca + 1)/(B
     for i, (tight, [Bmin, Bmax]) in enumerate(zip(tights, Branges), start=1):
 
         Atranspose = matrix([
-            [1] + [Ls[t]["gu"][j] - Ls[t]["gNu"][j] for j in range(d-1)] for t in tight
+            [1] + [Ls[t].data["gs"][0][j] - Ls[t].data["gs"][1][j] for j in range(d-1)] for t in tight
         ])
-        c = vector(Ls[t]["pu"] for t in tight)
+        c = vector(Ls[t].data["ps"][0] for t in tight)
         allys = Atranspose.solve_right(c)
         ys = allys[1:] # drop y_p which we will set to alpha(K_4)
 
@@ -60,7 +61,7 @@ ineqs{i} = Table[True, {len(Ls)}];
 """)
 
         for j, L in enumerate(Ls, start=1):
-            ineq = 0 <= L["pu"] - occKd1 - sum(ys[k] * (L["gu"][k] - L["gNu"][k]) for k in range(d-1))
+            ineq = 0 <= L.data["ps"][0] - occKd1 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in range(d-1))
             f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
 
         f.write(f"""
@@ -83,3 +84,6 @@ process = subprocess.Popen(["wolframscript", "-f", filename, "-print all"], stdo
 for line in process.stdout:
     print(line.decode(), end='')
 
+
+
+# %%

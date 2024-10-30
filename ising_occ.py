@@ -98,7 +98,7 @@ def get_data(d, spin_depth=2, filename=None):
         filename = default_filename(d, spin_depth)
 
     if os.path.isfile(filename):
-        data = load_data(d, filename)
+        data = load_data(d, spin_depth, filename)
         if data.version == DATA_VERSION:
             return data
 
