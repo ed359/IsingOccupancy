@@ -1,5 +1,5 @@
 # %%
-load("ising_occ.py")
+load("local_occupancy/ising_occ.py")
 
 # %%
 d = 3

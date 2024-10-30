@@ -9,7 +9,7 @@
 # %% Imports
 # from tqdm.autonotebook import tqdm
 
-load("ising_occ.py")
+load("local_occupancy/ising_occ.py")
 
 # %% Setup
 d = 3
