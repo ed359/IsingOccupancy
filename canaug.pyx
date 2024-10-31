@@ -15,6 +15,7 @@ from sage.graphs.base.c_graph cimport CGraph
 from sage.graphs.base.dense_graph cimport DenseGraph
 from sage.graphs.graph import Graph
 from sage.graphs.graph_generators import graphs
+
 from sage.groups.perm_gps.partn_ref.data_structures cimport *
 
 from sage.plot.plot import graphics_array
@@ -35,17 +36,19 @@ def gen_local_views(d, spin_depth=1, spins=None, spin_orbits=None, verbose=False
     for i in tqdm(range(spin_depth-1)):
         if verbose:
             print(f'Adding layer {i+1} starting with {len(data)} graphs')
-        data = list(add_new_layer(d, data))
+        data = [y for x in data for y in add_new_layer(d, *x)]
+
         if verbose:
             print(f'Filling layer {i+1} starting with {len(data)} graphs')
-        data = list(fill_layer(d, data))
+        data = [y for x in data for y in fill_layer(d, *x)]
 
     if verbose:
         print(f'Adding layer {spin_depth} disjointly to {len(data)} graphs')
-    data = list(add_new_layer_disjoint(d, data))
+    data = [y for x in data for y in add_new_layer_disjoint(d, *x)]
+
     if verbose:
         print(f'Assigning spins to layer {spin_depth} starting with {len(data)} graphs')
-    yield from assign_spins(d, data, spins, spin_orbits)
+    yield from (y for x in data for y in assign_spins(d, *x, spins, spin_orbits))
 
 def gen_local_view_1(d, spins, spin_orbits):
     yield from gen_local_views(d, 1, spins, spin_orbits)
@@ -55,57 +58,53 @@ def gen_local_view_2(d, spins, spin_orbits):
 
 ############
 # LAYER CODE
-def add_new_layer(d, data):
-    for (G, last_partition, last_layer) in data:
-        next_layer = []
-        for v in last_layer:
-            for w in range(d-G.degree(v)):
-                next_layer.append(G.add_vertex())
-        
-        partition = last_partition + [next_layer]
-        aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-        for X in canaug_new_layer(d, G, partition, last_layer, next_layer, aut_gens):
-            clean_X = copy(X)
-            clean_partition = deepcopy(partition)
-            clean_next_layer = copy(next_layer)
-            for v in next_layer:
-                if clean_X.degree(v) == 0:
-                    clean_X.delete_vertex(v)
-                    clean_partition[-1].remove(v)
-                    clean_next_layer.remove(v)
-            if not clean_partition[-1]:
-                clean_partition.pop()
-            yield (clean_X, clean_partition, clean_next_layer)
+def add_new_layer(d, G, last_partition, last_layer):
+    next_layer = []
+    for v in last_layer:
+        for w in range(d-G.degree(v)):
+            next_layer.append(G.add_vertex())
+    
+    partition = last_partition + [next_layer]
+    aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
+    for X in canaug_new_layer(d, G, partition, last_layer, next_layer, aut_gens):
+        clean_X = copy(X)
+        clean_partition = deepcopy(partition)
+        clean_next_layer = copy(next_layer)
+        for v in next_layer:
+            if clean_X.degree(v) == 0:
+                clean_X.delete_vertex(v)
+                clean_partition[-1].remove(v)
+                clean_next_layer.remove(v)
+        if not clean_partition[-1]:
+            clean_partition.pop()
+        yield (clean_X, clean_partition, clean_next_layer)
 
-def add_new_layer_disjoint(d, data):
-    for (G, last_partition, last_layer) in data:
-        next_layer = []
-        for v in last_layer:
-            Nv = []
-            for w in range(d-G.degree(v)):
-                Nv.append(G.add_vertex())
-            G.add_edges((v, w) for w in Nv)
-            next_layer.extend(Nv)
-        partition = deepcopy(last_partition + [next_layer])
-        yield (G, partition, next_layer)
+def add_new_layer_disjoint(d, G, last_partition, last_layer):
+    next_layer = []
+    for v in last_layer:
+        Nv = []
+        for w in range(d-G.degree(v)):
+            Nv.append(G.add_vertex())
+        G.add_edges((v, w) for w in Nv)
+        next_layer.extend(Nv)
+    partition = deepcopy(last_partition + [next_layer])
+    yield (G, partition, next_layer)
 
-def fill_layer(d, data):
-    for (G, partition, layer) in data:
-        aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-        for X in canaug_fill_layer(d, G, partition, layer, aut_gens):
-            yield (X, partition, layer)
+def fill_layer(d, G, partition, layer):
+    aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
+    for X in canaug_fill_layer(d, G, partition, layer, aut_gens):
+        yield (X, partition, layer)
 
 ##############
 # ASSIGN SPINS
-def assign_spins(d, data, spins, spin_orbits):
-    for (G, partition, layer) in data:
-        spin_indices = {s: G.add_vertex() for s in spins}
-        spin_vertices = list(spin_indices.values())
+def assign_spins(d, G, partition, layer, spins, spin_orbits):
+    spin_indices = {s: G.add_vertex() for s in spins}
+    spin_vertices = list(spin_indices.values())
 
-        partition += [[spin_indices[s] for s in orbit] for orbit in spin_orbits]
-        aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-        for X in canaug_assign_spins(G, partition, layer, spin_vertices, aut_gens):
-            yield LocalView(X, copy(spins), copy(spin_vertices), deepcopy(partition))
+    partition += [[spin_indices[s] for s in orbit] for orbit in spin_orbits]
+    aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
+    for X in canaug_assign_spins(G, partition, layer, spin_vertices, aut_gens):
+        yield LocalView(X, copy(spins), copy(spin_vertices), deepcopy(partition))
 
 #############
 # CANAUG CODE
