@@ -86,6 +86,21 @@ def gen_data(d, spin_depth=2, filename=None, verbose=False, tqdm=None):
     save(data, filename)
     return data
 
+def gen_data_par(d, spin_depth=2, filename=None, verbose=False, tqdm=None):
+    if filename is None:
+        filename = default_filename(d, spin_depth)
+    
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    Ls = []
+    for L in gen_local_views_par(d, spin_depth, spins=ising_spins, verbose=verbose, tqdm=tqdm):
+        compute_probabilities(L, spin_depth, tqdm=tqdm)
+        Ls.append(L)
+    
+    data = LData(Ls, DATA_VERSION)
+    save(data, filename)
+    return data
+
 def load_data(d, spin_depth=2, filename=None):
     if filename is None:
         filename = default_filename(d, spin_depth)
@@ -113,6 +128,9 @@ def sub_Ls(Ls, Bval, lval):
         data["gs"] = [[g.subs(B=Bval, l=lval) for g in gs] for gs in data["gs"]]
         data["Z"] = data["Z"].subs(B=Bval, l=lval)
 
+def triangle_count(G, u):
+    return sum(1 for s in Subsets(G.neighbors(u),2) if G.has_edge(s[0], s[1]))
+
 # linear programming
 # mflips is a list of indices for Ls we want to add constraints for by flipping a - to a +
 def gen_lp(d, spin_depth, Bval, lval, Ls=None, solver="PPL", gams=None, constraints="eq", mflips=[]):
@@ -133,6 +151,10 @@ def gen_lp(d, spin_depth, Bval, lval, Ls=None, solver="PPL", gams=None, constrai
                 p.add_constraint(
                     p.sum((L.data["gs"][0][j] - L.data["gs"][k][j]) * x[i] for i, L in enumerate(Ls)) == 0
                 )
+
+        # p.add_constraint(
+        #     p.sum((triangle_count(L.G, L.u)-sum(triangle_count(L.G,v) for v in L.Nu)/d)*x[i] for i, L in enumerate(Ls)) == 0
+        # )
     # elif constraints == "ge":
     #     p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) >= 1)
     #     # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
