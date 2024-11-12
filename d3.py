@@ -20,7 +20,7 @@ load("ising_occ.py")
 
 @dataclass
 class DualFeasibility:
-    tight_constraints: List[List[int]]
+    tight_constraints: int
     Bmin: str
     Bmax: str
     lmin: str
@@ -41,17 +41,27 @@ ZKd1 = sum(
 )
 occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
 
-df1 = DualFeasibility([15, 20, 21], '0', '3/10', '0', 'lc[d, B]')
-df2 = DualFeasibility([8, 16, 21], '3/10', '311/1000', 'lc[d, 3/10]', 'lc[d, B]')
-df3 = DualFeasibility([13, 16, 21], '311/1000', '31294/100000', 'lc[d, 311/1000]', 'lc[d, B]')
-df4 = DualFeasibility([15, 16, 21], '1/10', '1/10', '99/1000', '99/1000')
-dfs = [df1, df2, df3, df4]
+tights = [
+    [15,20,21],
+    [15,16,21],
+    [8,16,21],
+    [13,16,21],
+]
+
+dfs = [
+    DualFeasibility(0, '59/100', '1', '0', '(177*B)/200 - (267*B^2)/1000'), # True
+    DualFeasibility(0, '0', '59/100', '0', 'B*9/10'), # True
+    DualFeasibility(1, '1/10', '1/2', 'B/2', 'B*99/100'), # True
+    # DualFeasibility(2, '3/10', '311/1000', 'lc[d, 3/10]', 'lc[d, B]'),
+    # DualFeasibility(3, '311/1000', '31294/100000', 'lc[d, 311/1000]', 'lc[d, B]'),
+    # DualFeasibility(1, '1/10', '1/10', '99/1000', '99/1000'),
+]
 
 filename = "data/d3.wls"
 with open(filename, "w") as f:
 
     f.write(
-f"""Print["Running code with Wolfram Engine..."];
+f"""Print["Running code with Wolfram Engine...\n"];
 d = 3;
 Bc[d_] := (d-2)/d;
 lc[d_, 0]  := 0;
@@ -60,20 +70,16 @@ lc[d_, B_] := Block[{{r,s,Bca}},(((1 + Sqrt[r s])/(1 - Sqrt[r s]))^((Bca + 1)/(B
                 s -> (1 - B)/(1 + B)}}
             /.Bca -> Bc[d])];
 colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
+
 """)
 
-
-    for i, df in enumerate(dfs, start=1):
-        f.write(f'\n\n')
-        f.write(f'Print["Dual Feasibility {i}: tight constraints {df.tight_constraints}"];\n')
-        f.write(f'Print["Dual Feasibility {i}: {df.Bmin} <= B <= {df.Bmax}"];\n')
-        f.write(f'Print["Dual Feasibility {i}: {df.lmin} <= l <= {df.lmax}"];\n')
-        f.write(f'Print[""]\n')
+    for i, tight_constraints in enumerate(tights, start=1):
+        f.write(f'\nPrint["Tight constraints {i}: {tight_constraints}"];\n')
 
         Atranspose = matrix([
-            [1] + [Ls[t].data["gs"][0][j] - Ls[t].data["gs"][1][j] for j in range(d-1)] for t in df.tight_constraints
+            [1] + [Ls[t].data["gs"][0][j] - Ls[t].data["gs"][1][j] for j in range(d-1)] for t in tight_constraints
         ])
-        c = vector(Ls[t].data["ps"][0] for t in df.tight_constraints)
+        c = vector(Ls[t].data["ps"][0] for t in tight_constraints)
         allys = Atranspose.solve_right(c)
         ys = allys[1:] # drop y_p which we will set to alpha(K_4)
 
@@ -83,21 +89,30 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
             ineq = 0 <= L.data["ps"][0] - occKd1 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in range(d-1))
             f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
 
+        f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[{i}]],Opacity[0.2]]}}]];\n")
+
+    f.write(f"Print[""]\n")
+
+    for i, df in enumerate(dfs, start=1):
+        t = df.tight_constraints + 1
+        f.write(f'\n\n')
+        f.write(f'Print["Dual Feasibility {i}: tight constraints {tights[t]}"];\n')
+        f.write(f'Print["Dual Feasibility {i}: {df.Bmin} <= B <= {df.Bmax}"];\n')
+        f.write(f'Print["Dual Feasibility {i}: {df.lmin} <= l <= {df.lmax}"];\n')
+        f.write(f'Print[""]\n')
+
         f.write(f"""
 Bmin{i} = {df.Bmin}; Bmax{i} = {df.Bmax};
 lmin{i} = {df.lmin}; lmax{i} = {df.lmax};
 params{i} = {{lmin{i} <= l <= lmax{i} && Bmin{i} <= B <= Bmax{i}}};
 
-idxchunks{i} = Partition[Range[Length[ineqs{i}]], UpTo[6]];
-ineqchunks{i} = Partition[ineqs{i}, UpTo[6]];
+idxchunks{i} = Partition[Range[Length[ineqs{t}]], UpTo[6]];
+ineqchunks{i} = Partition[ineqs{t}, UpTo[6]];
 
-t{i} := Table[Plot[{{0}}~Join~Table[ineq[[2]]/.l->lc[d,B], {{ineq, ineqchunks{i}[[n]]}}]//Evaluate,{{B,Bmin{i},Bmax{i}}},
-          PlotLabel->"Range {i}", PlotLegends->Placed[LineLegend[97,{{0}}~Join~idxchunks{i}[[n]],LegendLayout->Row,LabelStyle->Directive[Small]],{{Center,Top}}], AspectRatio->Full], {{n,Length[idxchunks{i}]}}];
-g{i} := GraphicsColumn[Table[Show[p, ImageSize->{{300, 100}}], {{p,t{i}}}], Spacings->{{0,Scaled[0.1]}}];
-r{i} := RegionPlot[{{Bmin{i} <= B <= Bmax{i}, lmin{i} <= l <= lmax{i}}}, {{B, 0, 1}}, {{l, 0, 1}}, PlotPoints->100, MaxRecursion->4, PlotStyle->{{Directive[colors[[{i}]],Opacity[0.2]]}}, BoundaryStyle->None];
+dfr{i} := RegionPlot[Bmin{i} <= B <= Bmax{i} && lmin{i} <= l <= lmax{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->100, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[{i}]],Opacity[0.2]]}}];
 
 test{i} := Block[{{}},
-{{time{i}, a{i}}} = Table[TrueQ[Simplify[ineq,{{params{i}}}]], {{ineq, ineqs{i}}}]//AbsoluteTiming;
+{{time{i}, a{i}}} = Table[TrueQ[Simplify[ineq,{{params{i}}}]], {{ineq, ineqs{t}}}]//AbsoluteTiming;
 ans{i} = And @@ a{i};
 Print["Dual Feasibility {i}: " <> ToString[ans{i}] <> " in time " <> ToString[time{i}] <> "s"]
 ];
