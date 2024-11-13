@@ -1,17 +1,20 @@
 # %%
+from itertools import batched
 load("ising_occ.py")
 
-from itertools import batched
-for batch in batched(gen_local_views(3,2), 4):
-    graphics_array([L.plot() for L in batch]).show()
-
-for batch in batched(gen_local_views_par(3,2), 4):
-    graphics_array([L.plot() for L in batch]).show()
+def occ(G,B,l):
+    L = LocalView(G, ising_spins, [])
+    Z = sum(
+        B ** mono(G, sigma) * l ** nplus(G, sigma)
+        for sigma in L.gen_all_spin_assignments()
+    )
+    F = ln(Z)/G.order()
+    return l * diff(F, l)
 
 # %%
 d = 3
 spin_depth = 2
-Ls = get_data(d, spin_depth).Ls # do not exclude K_4
+Ls = get_data(d, spin_depth).Ls[:-1] # do not exclude K_4
 gams = list(range(d+1)) # all the gamma constraints [0,...,d]
 mflips = []
 
@@ -30,8 +33,8 @@ ZKd1 = sum(
 occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
 
 # Run primal LP with rational sage solver
-Bval = 1/1000
-lval = 1/2 # Rational(lc(d,Bval).n(digits=100))
+Bval = 1/10
+lval = 99/1000 # Rational(lc(d,Bval).n(digits=100))
 occKd1val = occKd1.subs(B=Bval, l=lval)
 occPetval = occPet.subs(B=Bval, l=lval)
 
@@ -49,6 +52,7 @@ print(f"program: {occlb1.n()}")
 #     print("Bad, program without K_4 is less than K_4")
 
 # %% Run primal LP with exact solver over algebraic reals
+d = 3
 Bval = 32/100
 lval = lc(d,Bval)
 occKd1val = occKd1.subs(B=Bval, l=lval)
@@ -85,15 +89,20 @@ ZPet = sum(
 )
 occPet = l * diff(ln(ZPet), l) / Pet.G.order()
 
+# B=32/100 seems to work (GLPK) at lc
+# B=33/100 does not seem to work (GLPK) at lc
+
+# B=1/10000, l=1/1000 seems to give Pet (GLPK)
+
 Ls = get_data(d, spin_depth).Ls # do not exclude K_4
-Bval = 1/1000
-lval = 500/1000 # Rational(lc(d,Bval).n(digits=50))
+Bval = 1/10000 # 33/100
+lval = 1/1000 # Rational(lc(d,Bval).n(digits=50))
 occKd1val = occKd1.subs(B=Bval, l=lval)
 occPetval = occPet.subs(B=Bval, l=lval)
 
 print('Loaded data...')
 constraint_type = 'eq'
-p1, x1 = gen_lp(d, spin_depth, Bval, lval, Ls, solver="GLPK", gams=gams, constraints=constraint_type, mflips=mflips)
+p1, x1 = gen_lp(d, spin_depth, Bval, lval, Ls, solver="PPL", gams=gams, constraints=constraint_type, mflips=mflips)
 # K4idx = len(Ls)-1
 # p1.add_constraint(x1[K4idx]==0)
 print('solving...')
@@ -114,7 +123,7 @@ for i, v in vals.items():
         support.append(i)
         # print({i: v})
 
-for batch in batched((Ls[i].plot() for i in support), 3):
+for batch in batched((Ls[i].plot() for i in support), 2):
     graphics_array(batch).show()
 
 
@@ -203,14 +212,7 @@ show(poccK4 + poccPet + plc)
 poccPet = plot3d(occPet, (B,0,1/3), (l,0,1), plot_points=100, color='blue')
 poccK4 = plot3d(occK4, (B,0,1/3), (l,0,1), plot_points=100, color='red')
 colors = ['red', 'blue', 'brown','pink','cyan','magenta','yellow']
-def occ(G,B,l):
-    L = LocalView(G, ising_spins, [])
-    Z = sum(
-        B ** mono(G, sigma) * l ** nplus(G, sigma)
-        for sigma in L.gen_all_spin_assignments()
-    )
-    F = ln(Z)/G.order()
-    return l * diff(F, l)
+
 
 from itertools import batched
 files = [
