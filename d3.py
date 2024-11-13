@@ -88,7 +88,7 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
             ineq = 0 <= L.data["ps"][0] - occKd1 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in range(d-1))
             f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
 
-        f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[{i}]],Opacity[0.2]]}}]];\n")
+        f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[0.5]]}}]];\n")
 
     f.write(f"Print[""]\n")
 
@@ -108,7 +108,7 @@ params{i} = {{lmin{i} <= l <= lmax{i} && Bmin{i} <= B <= Bmax{i}}};
 idxchunks{i} = Partition[Range[Length[ineqs{t}]], UpTo[6]];
 ineqchunks{i} = Partition[ineqs{t}, UpTo[6]];
 
-dfr{i} := RegionPlot[Bmin{i} <= B <= Bmax{i} && lmin{i} <= l <= lmax{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->100, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[{i}]],Opacity[0.2]]}}];
+dfr{i} := RegionPlot[Bmin{i} <= B <= Bmax{i} && lmin{i} <= l <= lmax{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->100, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[{4}]],Opacity[0.5]]}}];
 
 test{i} := Block[{{}},
 {{time{i}, a{i}}} = Table[TrueQ[Simplify[ineq,{{params{i}}}]], {{ineq, ineqs{t}}}]//AbsoluteTiming;
