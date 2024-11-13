@@ -52,9 +52,8 @@ dfs = [
     DualFeasibility(0, '59/100', '1', '0', '(177*B)/200 - (267*B^2)/1000'), # True
     DualFeasibility(0, '0', '59/100', '0', 'B*9/10'), # True
     DualFeasibility(1, '1/10', '1/2', 'B/2', 'B*99/100'), # True
-    # DualFeasibility(2, '3/10', '311/1000', 'lc[d, 3/10]', 'lc[d, B]'),
-    # DualFeasibility(3, '311/1000', '31294/100000', 'lc[d, 311/1000]', 'lc[d, B]'),
-    # DualFeasibility(1, '1/10', '1/10', '99/1000', '99/1000'),
+    DualFeasibility(2, '1/4', '9/20', 'B*49/50', 'B*7/5-85/1000'), # True
+    DualFeasibility(3, '26/100', '36/100', 'B*68/50-75/1000', 'B*72/50-90/1000'), # True
 ]
 
 filename = "data/d3.wls"
@@ -96,7 +95,7 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
     for i, df in enumerate(dfs, start=1):
         t = df.tight_constraints + 1
         f.write(f'\n\n')
-        f.write(f'Print["Dual Feasibility {i}: tight constraints {tights[t]}"];\n')
+        f.write(f'Print["Dual Feasibility {i}: tight constraints {tights[t-1]}"];\n')
         f.write(f'Print["Dual Feasibility {i}: {df.Bmin} <= B <= {df.Bmax}"];\n')
         f.write(f'Print["Dual Feasibility {i}: {df.lmin} <= l <= {df.lmax}"];\n')
         f.write(f'Print[""]\n')
