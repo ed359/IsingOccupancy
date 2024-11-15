@@ -52,6 +52,7 @@ dfs = [
     DualFeasibility(0, '59/100', '1', '0', '(177*B)/200 - (267*B^2)/1000'), # True
     DualFeasibility(0, '0', '59/100', '0', 'B*9/10'), # True
     DualFeasibility(1, '1/10', '1/2', 'B/2', 'B*99/100'), # True
+    DualFeasibility(1, '1/2', '9/10', '3/20', 'Min[B,53/100]'), # True
     DualFeasibility(2, '1/4', '9/20', 'B*49/50', 'B*7/5-85/1000'), # True
     DualFeasibility(3, '26/100', '36/100', 'B*68/50-75/1000', 'B*72/50-90/1000'), # True
 ]
