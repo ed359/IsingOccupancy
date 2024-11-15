@@ -89,8 +89,11 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
             ineq = 0 <= L.data["ps"][0] - occKd1 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in range(d-1))
             f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
 
+        f.write(f"tR{i} = Hold[ImplicitRegion[And @@ ineqs{i}, {{B,l}}]];\n")
         f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[0.5]]}}]];\n")
 
+    f.write("\n")
+    f.write(f'tRall := RegionUnion @@ {{ {', '.join(f"tR{i} // ReleaseHold" for i, _ in enumerate(tights, start=1))} }};\n')
     f.write(f"Print[""]\n")
 
     for i, df in enumerate(dfs, start=1):
@@ -109,6 +112,7 @@ params{i} = {{lmin{i} <= l <= lmax{i} && Bmin{i} <= B <= Bmax{i}}};
 idxchunks{i} = Partition[Range[Length[ineqs{t}]], UpTo[6]];
 ineqchunks{i} = Partition[ineqs{t}, UpTo[6]];
 
+dfR{i} := ImplicitRegion[Bmin{i} <= B <= Bmax{i} && lmin{i} <= l <= lmax{i},{{B,l}}];
 dfr{i} := RegionPlot[Bmin{i} <= B <= Bmax{i} && lmin{i} <= l <= lmax{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->100, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[{4}]],Opacity[0.5]]}}];
 
 test{i} := Block[{{}},
@@ -117,8 +121,11 @@ ans{i} = And @@ a{i};
 Print["Dual Feasibility {i}: " <> ToString[ans{i}] <> " in time " <> ToString[time{i}] <> "s"]
 ];
 """)
-    
-    f.write("\n\n\n")
+
+    f.write("\n\n")
+    f.write(f'dfRall := RegionUnion @@ {{ {', '.join(f"dfR{i}" for i, _ in enumerate(dfs, start=1))} }};\n')
+
+    f.write("\n")
     f.write('Print["Performing dual feasibility tests..."];\n')
     for i, df in enumerate(dfs, start=1):
         f.write(f"test{i};\n")
