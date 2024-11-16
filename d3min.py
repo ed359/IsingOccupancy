@@ -57,7 +57,7 @@ dfs = [
     DualFeasibility(3, '26/100', '36/100', 'B*68/50-75/1000', 'B*72/50-90/1000'), # True
 ]
 
-filename = "data/d3.wls"
+filename = "data/d3min.wls"
 with open(filename, "w") as f:
 
     f.write(

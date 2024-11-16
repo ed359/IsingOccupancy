@@ -133,14 +133,14 @@ def triangle_count(G, u):
 
 # linear programming
 # mflips is a list of indices for Ls we want to add constraints for by flipping a - to a +
-def gen_lp(d, spin_depth, Bval, lval, Ls=None, solver="PPL", gams=None, constraints="eq", mflips=[]):
+def gen_lp(d, spin_depth, Bval, lval, Ls=None, solver="PPL", gams=None, constraints="eq", mflips=[], maximization=False):
     if Ls is None:
         Ls = get_data(d, spin_depth)
     if gams is None:
         gams = range(d+1)
     sub_Ls(Ls, Bval, lval)
 
-    p = MixedIntegerLinearProgram(maximization=False, solver=solver)
+    p = MixedIntegerLinearProgram(maximization=maximization, solver=solver)
     x = p.new_variable(nonnegative=True)
 
     if constraints == "eq":
