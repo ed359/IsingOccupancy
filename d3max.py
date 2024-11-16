@@ -46,7 +46,9 @@ tights = [
 ]
 
 dfs = [
-    DualFeasibility(0, '1/10', '1/10', '1/100', '1/100'),
+    DualFeasibility(0, '0',    '2/10', '0', 'B*3/10'),
+    DualFeasibility(0, '2/10', '4/10', '0', 'B*4/10'),
+    DualFeasibility(0, '4/10', '1',    '0', 'B*5/10'),
 ]
 
 filename = "data/d3max.wls"
@@ -79,7 +81,10 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
 
         for j, L in enumerate(Ls, start=1):
             ineq = 0 >= L.data["ps"][0] - occKdd - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in range(d-1))
-            f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
+            if j-1 in tight_constraints: # Python indices are 0-based, Wolfram indices are 1-based
+                f.write(f"ineqs{i}[[{j}]] = {ineq} // Simplify;\n")
+            else:
+                f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
 
         f.write(f"tR{i} = Hold[ImplicitRegion[And @@ ineqs{i}, {{B,l}}]];\n")
         f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[0.5]]}}]];\n")

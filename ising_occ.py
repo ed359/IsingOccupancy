@@ -14,12 +14,15 @@ load("canaug.pyx")
 ising_spins = ["+", "-"]
 
 def mono(G, sigma):
+    """Count the number of monochromatic edges of a graph G under a spin assignment sigma."""
     return sum(1 for e in G.edges(labels=False) if sigma[e[0]] == sigma[e[1]])
 
 def nplus(G, sigma):
+    """Count the number of vertices of a graph G which receive spin + under a spin assignment sigma."""
     return sum(1 for v in G.vertices() if sigma[v] == "+")
 
 def lc(d, B):
+    """Compute the critical value of the external field l for a given edge activity B."""
     r = var("r")
     s = var("s")
     bc = var("bc")
@@ -32,6 +35,7 @@ def lc(d, B):
     return ret.subs(r=(bc - B) / (bc + B), s=(1 - B) / (1 + B)).subs(bc=(d - 2) / d)
 
 def compute_probabilities(L, depth, B=None, l=None, tqdm=None):
+    """Compute the probabilities for a local view L."""
     if B is None:
         B = var("B")
     if l is None:
@@ -40,8 +44,11 @@ def compute_probabilities(L, depth, B=None, l=None, tqdm=None):
     u = L.u
     d = L.G.degree(u)
 
+    # ps[i] is the probability that the simple random walk of length i from u terminates in a vertex which gets +
     ps = [0 for _ in range(depth)]
+    # gs[i][j] is the probability that the simple random walk of length i from u terminates in a vertex which has j neighbors that get +
     gs = [[0 for _ in range(d + 1)] for _ in range(depth)]
+    # Z is the partition function of the local view L
     Z = 0
 
     for sigma in L.gen_all_spin_assignments(tqdm):
@@ -54,6 +61,7 @@ def compute_probabilities(L, depth, B=None, l=None, tqdm=None):
                 ps[i] += weight * Apow[u, v] * int(sigma[v] == "+") / d**i
                 gs[i][sum(1 for w in L.G.neighbors(v) if sigma[w] == "+")] += weight * Apow[u, v] / d**i
 
+    # Normalize by Z at the end
     for i in range(depth):
         ps[i] /= Z
         gs[i] = [g / Z for g in gs[i]]
@@ -129,7 +137,7 @@ def sub_Ls(Ls, Bval, lval):
         data["Z"] = data["Z"].subs(B=Bval, l=lval)
 
 def triangle_count(G, u):
-    return sum(1 for s in Subsets(G.neighbors(u),2) if G.has_edge(s[0], s[1]))
+    return sum(1 for s in Subsets(G.neighbors(u), 2) if G.has_edge(s[0], s[1]))
 
 # linear programming
 # mflips is a list of indices for Ls we want to add constraints for by flipping a - to a +
