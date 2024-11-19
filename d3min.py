@@ -49,7 +49,9 @@ dfs = [
     DualFeasibility(0, '0', '59/100', '0', 'B*9/10'), # True
     DualFeasibility(1, '1/10', '1/2', 'B/2', 'B*99/100'), # True
     DualFeasibility(1, '1/2', '9/10', '3/20', 'Min[B,53/100]'), # True
+    DualFeasibility(1, '3/5', '98/100', 'B*11/50 + 35/100', 'B*12/50+ 375/1000'), # True
     DualFeasibility(2, '1/4', '9/20', 'B*49/50', 'B*7/5-85/1000'), # True
+    DualFeasibility(2, '56/125', '3/5', 'B*99/100', '133/200 - B*13/50'), # True
     DualFeasibility(3, '26/100', '36/100', 'B*68/50-75/1000', 'B*72/50-90/1000'), # True
 ]
 
@@ -92,7 +94,7 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
         f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[0.5]]}}]];\n")
 
     f.write("\n")
-    f.write(f'tRall := RegionUnion @@ {{ {', '.join(f"tR{i} // ReleaseHold" for i, _ in enumerate(tights, start=1))} }};\n')
+    f.write(f"tRall := RegionUnion @@ {{ {', '.join(f'tR{i} // ReleaseHold' for i, _ in enumerate(tights, start=1))} }};\n")
     f.write(f"Print[""]\n")
 
     for i, df in enumerate(dfs, start=1):
@@ -122,7 +124,7 @@ Print["Dual Feasibility {i}: " <> ToString[ans{i}] <> " in time " <> ToString[ti
 """)
 
     f.write("\n\n")
-    f.write(f'dfRall := RegionUnion @@ {{ {', '.join(f"dfR{i}" for i, _ in enumerate(dfs, start=1))} }};\n')
+    f.write(f"dfRall := RegionUnion @@ {{ {', '.join(f'dfR{i}' for i, _ in enumerate(dfs, start=1))} }};\n")
 
     f.write("\n")
     f.write('Print["Performing dual feasibility tests..."];\n')
