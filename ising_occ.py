@@ -21,6 +21,19 @@ def nplus(G, sigma):
     """Count the number of vertices of a graph G which receive spin + under a spin assignment sigma."""
     return sum(1 for v in G.vertices() if sigma[v] == "+")
 
+def Z(G, B, l):
+    """Compute the partition function of the Ising model on a graph G with edge activity B and external field l."""
+    return sum(
+        B ** mono(G, sigma) * l ** nplus(G, sigma)
+        for sigma in LocalView(G, ising_spins, []).gen_all_spin_assignments()
+    )
+
+def occ(G, B, l):
+    varB, varl = var("varB, varl")
+    ZG = Z(G, varB, varl)
+    FG = ln(ZG)/G.order()
+    return (varl * diff(FG, varl)).subs(varB=B,varl=l)
+
 def lc(d, B):
     """Compute the critical value of the external field l for a given edge activity B."""
     r = var("r")

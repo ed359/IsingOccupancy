@@ -30,16 +30,12 @@ class DualFeasibility:
 run_wolfram = False
 d = 3
 spin_depth = 2
-Ls = get_data(d, spin_depth).Ls
+Ls = get_data(d, spin_depth).Ls # use all Ls
 gams = list(range(d-1)) # [0,...,d-2]
 
 B, l = var("B, l")
-Kdd = LocalView(graphs.CompleteBipartiteGraph(d,d), ising_spins, [])
-ZKdd = sum(
-    B ** mono(Kdd.G, sigma) * l ** nplus(Kdd.G, sigma)
-    for sigma in Kdd.gen_all_spin_assignments()
-)
-occKdd = l * diff(ln(ZKdd), l) / Kdd.G.order()
+K33 = graphs.CompleteBipartiteGraph(d,d)
+occKdd = occ(K33, B, l)
 
 tights = [
     [0, 4, 8],
@@ -71,16 +67,16 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
         f.write(f'\nPrint["Tight constraints {i}: {tight_constraints}"];\n')
 
         Atranspose = matrix([
-            [1] + [Ls[t].data["gs"][0][j] - Ls[t].data["gs"][1][j] for j in range(d-1)] for t in tight_constraints
+            [1] + [Ls[t].data["gs"][0][j] - Ls[t].data["gs"][1][j] for j in gams] for t in tight_constraints
         ])
         c = vector(Ls[t].data["ps"][0] for t in tight_constraints)
         allys = Atranspose.solve_right(c)
-        ys = allys[1:] # drop y_p which we will set to alpha(K_{d,d})
+        ys = allys[1:] # drop y_p which we will set to occK33
 
         f.write(f"ineqs{i} = Table[True, {len(Ls)}];\n")
 
         for j, L in enumerate(Ls, start=1):
-            ineq = 0 >= L.data["ps"][0] - occKdd - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in range(d-1))
+            ineq = 0 >= L.data["ps"][0] - occK33 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in gams)
             if j-1 in tight_constraints: # Python indices are 0-based, Wolfram indices are 1-based
                 f.write(f"ineqs{i}[[{j}]] = {ineq} // Simplify;\n")
             else:

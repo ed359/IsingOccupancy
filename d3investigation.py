@@ -2,54 +2,46 @@
 from itertools import batched
 load("ising_occ.py")
 
-def occ(G,B,l):
-    L = LocalView(G, ising_spins, [])
-    Z = sum(
-        B ** mono(G, sigma) * l ** nplus(G, sigma)
-        for sigma in L.gen_all_spin_assignments()
-    )
-    F = ln(Z)/G.order()
-    return l * diff(F, l)
-
 # %%
 d = 3
 spin_depth = 2
-Ls = get_data(d, spin_depth).Ls[:-1] # do not exclude K_4
+Ls = get_data(d, spin_depth).Ls # do not exclude K_4
 gams = list(range(d+1)) # all the gamma constraints [0,...,d]
 mflips = []
 
 B, l = var("B, l")
-Pet = LocalView(graphs.PetersenGraph(), ising_spins, [])
-ZPet = sum(
-    B ** mono(Pet.G, sigma) * l ** nplus(Pet.G, sigma)
-    for sigma in Pet.gen_all_spin_assignments()
-)
-occPet = l * diff(ln(ZPet), l) / Pet.G.order()
-Kd1 = LocalView(graphs.CompleteGraph(d + 1), ising_spins, [])
-ZKd1 = sum(
-    B ** mono(Kd1.G, sigma) * l ** nplus(Kd1.G, sigma)
-    for sigma in Kd1.gen_all_spin_assignments()
-)
-occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
+Pet = graphs.PetersenGraph()
+occPet = occ(Pet, B, l)
+K4 = graphs.CompleteGraph(4)
+occK4 = occ(K4, B, l)
+K33 = graphs.CompleteBipartiteGraph(3,3)
+occK33 = occ(K33, B, l)
 
 # Run primal LP with rational sage solver
 Bval = 1/10
-lval = 99/1000 # Rational(lc(d,Bval).n(digits=100))
-occKd1val = occKd1.subs(B=Bval, l=lval)
+lval = 50/100 # Rational(lc(d,Bval).n(digits=100))
 occPetval = occPet.subs(B=Bval, l=lval)
+occK4val = occK4.subs(B=Bval, l=lval)
+occK33val = occK33.subs(B=Bval, l=lval)
 
-constraint_type = 'eq'
-p1, x1 = gen_lp(d, spin_depth, Bval, lval, Ls, solver="PPL", gams=gams, constraints=constraint_type, mflips=mflips)
-occlb1 = p1.solve()
+p1, x1 = gen_lp(d, spin_depth, Bval, lval, Ls, solver="PPL", gams=gams, constraints='eq', mflips=mflips, maximization=True)
+occbd1 = p1.solve()
 print(f"B: {Bval.n()}, l: {lval.n()}")
-print(f"K_{d+1}:     {occKd1val.n()}")
 print(f"Pet:     {occPetval.n()}")
+print(f"K4:      {occK4val.n()}")
+print(f"K33:     {occK33val.n()}")
 
-print(f"program: {occlb1.n()}")
-# if occlb1 >= occKd1val:
-#     print("Good, program is at least K_4")
-# else:
-#     print("Bad, program without K_4 is less than K_4")
+print(f"program: {occbd1.n()}")
+
+vals = p1.get_values(x1)
+support = []
+for i, v in vals.items():
+    if v > 10**-4:
+        support.append(i)
+        # print({i: v})
+
+for batch in batched((Ls[i].plot() for i in support), 2):
+    graphics_array(batch).show()
 
 # %% Run primal LP with exact solver over algebraic reals
 d = 3
@@ -95,14 +87,14 @@ occPet = l * diff(ln(ZPet), l) / Pet.G.order()
 # B=1/10000, l=1/1000 seems to give Pet (GLPK)
 
 Ls = get_data(d, spin_depth).Ls # do not exclude K_4
-Bval = 1/10000 # 33/100
-lval = 1/1000 # Rational(lc(d,Bval).n(digits=50))
+Bval = 1/10 # 33/100
+lval = 99/100 # Rational(lc(d,Bval).n(digits=50))
 occKd1val = occKd1.subs(B=Bval, l=lval)
 occPetval = occPet.subs(B=Bval, l=lval)
 
 print('Loaded data...')
 constraint_type = 'eq'
-p1, x1 = gen_lp(d, spin_depth, Bval, lval, Ls, solver="PPL", gams=gams, constraints=constraint_type, mflips=mflips)
+p1, x1 = gen_lp(d, spin_depth, Bval, lval, Ls, solver="GLPK", gams=gams, constraints=constraint_type, mflips=mflips, maximization=True)
 # K4idx = len(Ls)-1
 # p1.add_constraint(x1[K4idx]==0)
 print('solving...')
@@ -198,19 +190,30 @@ ZPet = sum(
 FPet = ln(ZPet)/Pet.G.order()
 occPet = l * diff(FPet, l)
 
+K33 = LocalView(graphs.CompleteBipartiteGraph(3,3), ising_spins, [])
+ZK33 = sum(
+    B ** mono(K33.G, sigma) * l ** nplus(K33.G, sigma)
+    for sigma in K33.gen_all_spin_assignments()
+)
+FK33 = ln(ZK33)/K33.G.order()
+occK33 = l * diff(FK33, l)
+
 plc = implicit_plot3d(l==lc(3,B), (B,0,1/3), (l,0,1), (z,0,1/2), color='green')
 
-pFK4 = plot3d(FK4, (B,0,1/3), (l,0,1), plot_points=100, color='blue')
-pFPet = plot3d(FPet, (B,0,1/3), (l,0,1), plot_points=100, color='red')
-show(pFK4 + pFPet + plc)
+# pFK4 = plot3d(FK4, (B,0,1/3), (l,0,1), plot_points=100, color='blue')
+# pFPet = plot3d(FPet, (B,0,1/3), (l,0,1), plot_points=100, color='red')
+# show(pFK4 + pFPet + plc)
 
 poccK4 = plot3d(occK4, (B,0,1/3), (l,0,1), plot_points=100, color='blue')
 poccPet = plot3d(occPet, (B,0,1/3), (l,0,1), plot_points=100, color='red')
-show(poccK4 + poccPet + plc)
+poccK33 = plot3d(occK33, (B,0,1/3), (l,0,1), plot_points=100, color='violet')
+show(poccK4 + poccPet + poccK33 + plc)
 
 # %%
 poccPet = plot3d(occPet, (B,0,1/3), (l,0,1), plot_points=100, color='blue')
 poccK4 = plot3d(occK4, (B,0,1/3), (l,0,1), plot_points=100, color='red')
+poccK33 = plot3d(occK33, (B,0,1/3), (l,0,1), plot_points=100, color='violet')
+
 colors = ['red', 'blue', 'brown','pink','cyan','magenta','yellow']
 
 
@@ -220,8 +223,8 @@ files = [
     # 'cub06.g6',
     # 'cub08.g6',
     # 'cub10.g6',
-    # 'cub12.g6',
-    'cub14.g6',
+    'cub12.g6',
+    # 'cub14.g6', # tried up to here
     # 'cub16.g6',
     # 'cub18.g6',
     # 'cub20.g6',
@@ -234,7 +237,7 @@ for file in files:
             Gs = [Graph(line.strip(), format='graph6') for line in batch]
             occs = [occ(G,B,l) for G in Gs]
             plots = [plot3d(occ, (B,0,1/3), (l,0,1), plot_points=100, color=col) for occ, col, label in zip(occs, colors, batch)]
-            combined = combined_min + sum(plots)
+            combined = poccK33 + sum(plots)
             print(list(zip(colors, batch)))
             combined.show()
 

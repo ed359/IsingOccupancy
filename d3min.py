@@ -30,16 +30,12 @@ class DualFeasibility:
 run_wolfram = False
 d = 3
 spin_depth = 2
-Ls = get_data(d, spin_depth).Ls[:-1] # exclude K_4
+Ls = get_data(d, spin_depth).Ls[:-1] # exclude K_4 which is the last local view
 gams = list(range(d-1)) # [0,...,d-2]
 
 B, l = var("B, l")
-Kd1 = LocalView(graphs.CompleteGraph(d + 1), ising_spins, [])
-ZKd1 = sum(
-    B ** mono(Kd1.G, sigma) * l ** nplus(Kd1.G, sigma)
-    for sigma in Kd1.gen_all_spin_assignments()
-)
-occKd1 = l * diff(ln(ZKd1), l) / Kd1.G.order()
+K4 = graphs.CompleteGraph(d + 1)
+occK4 = occ(K4, B, l)
 
 tights = [
     [15,20,21],
@@ -77,16 +73,16 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
         f.write(f'\nPrint["Tight constraints {i}: {tight_constraints}"];\n')
 
         Atranspose = matrix([
-            [1] + [Ls[t].data["gs"][0][j] - Ls[t].data["gs"][1][j] for j in range(d-1)] for t in tight_constraints
+            [1] + [Ls[t].data["gs"][0][j] - Ls[t].data["gs"][1][j] for j in gams] for t in tight_constraints
         ])
         c = vector(Ls[t].data["ps"][0] for t in tight_constraints)
         allys = Atranspose.solve_right(c)
-        ys = allys[1:] # drop y_p which we will set to alpha(K_4)
+        ys = allys[1:] # drop y_p which we will set to occK4
 
         f.write(f"ineqs{i} = Table[True, {len(Ls)}];\n")
 
         for j, L in enumerate(Ls, start=1):
-            ineq = 0 <= L.data["ps"][0] - occKd1 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in range(d-1))
+            ineq = 0 <= L.data["ps"][0] - occK4 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in gams)
             if j-1 in tight_constraints: # Python indices are 0-based, Wolfram indices are 1-based
                 f.write(f"ineqs{i}[[{j}]] = {ineq} // Simplify;\n")
             else:
@@ -137,7 +133,6 @@ if run_wolfram:
     process = subprocess.Popen(["wolframscript", "-f", filename, "-print all"], stdout=subprocess.PIPE)
     for line in process.stdout:
         print(line.decode(), end='')
-
 
 
 # %%
