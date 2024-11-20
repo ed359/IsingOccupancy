@@ -89,7 +89,7 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
                 f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
 
         f.write(f"tR{i} = Hold[ImplicitRegion[And @@ ineqs{i}, {{B,l}}]];\n")
-        f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[0.5]]}}]];\n")
+        f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[1]]}}]];\n")
 
     f.write("\n")
     f.write(f'tRall := RegionUnion @@ {{ {', '.join(f"tR{i} // ReleaseHold" for i, _ in enumerate(tights, start=1))} }};\n')

@@ -35,7 +35,7 @@ gams = list(range(d-1)) # [0,...,d-2]
 
 B, l = var("B, l")
 K33 = graphs.CompleteBipartiteGraph(d,d)
-occKdd = occ(K33, B, l)
+occK33 = occ(K33, B, l)
 
 tights = [
     [0, 4, 8],
