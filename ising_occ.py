@@ -166,61 +166,11 @@ def gen_lp(d, spin_depth, Bval, lval, Ls=None, solver="PPL", gams=None, constrai
 
     if constraints == "eq":
         p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) == 1)
-        # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) == 0)
         for j in gams:
             for k in range(1, spin_depth):
                 p.add_constraint(
                     p.sum((L.data["gs"][0][j] - L.data["gs"][k][j]) * x[i] for i, L in enumerate(Ls)) == 0
                 )
-
-        # p.add_constraint(
-        #     p.sum((triangle_count(L.G, L.u)-sum(triangle_count(L.G,v) for v in L.Nu)/d)*x[i] for i, L in enumerate(Ls)) == 0
-        # )
-    # elif constraints == "ge":
-    #     p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) >= 1)
-    #     # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
-    #     for j in gams:
-    #         p.add_constraint(
-    #             p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) >= 0
-    #         )
-    # else: #constraints == "le":
-    #     p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) <= 1)
-    #     # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
-    #     for j in gams:
-    #         p.add_constraint(
-    #             p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) <= 0
-    #         )
-
-    # for i in mflips:
-    #     Lm = Ls[i]["L"]
-    #     ms = set(w for w in Lm.N2u if Lm.spin_assignment[w] == "-")
-    #     # print(f"mflip index {i}")
-    #     # Lm.show()
-
-    #     orbitms = []
-    #     while ms:
-    #         w = next(iter(ms))
-    #         orbit = set(Lm.orbit(w))
-    #         ms -= orbit
-    #         orbitms.append(orbit)
-    #     print(f"mflip index {i}: orbitms = {orbitms}")
-
-    #     for orbitm in orbitms:
-    #         w = next(iter(orbitm))
-    #         # print(f"mflip index {i}: orbitm = {orbitm}, w={w}")
-    #         Lp = Lm.change_spin(w)
-    #         # Lp.show()
-    #         orbitp = set(Lp.orbit(w))
-    #         # print(f"mflip index {i}: orbitp = {orbitp}")
-
-    #         Lpcan = Lp.fullG_can_fixed_spins
-    #         j = 0
-    #         while (Ls[j]['L'].fullG_can_fixed_spins != Lpcan):
-    #             j += 1
-
-    #         p.add_constraint(len(orbitm)*x[i] >= Bval**d/lval * len(orbitp) * x[j])
-    #         print(f"mflip index {i}: constraint {len(orbitm)} * x[{i}] >= B^{d}/lam * {len(orbitp)} * x[{j}]")
-    
 
     p.set_objective(p.sum(L.data["ps"][0] * x[i] for i, L in enumerate(Ls)))
     return p, x
@@ -242,38 +192,6 @@ def gen_lp_via_poly(d, Bval, lval, Ls=None, gams=None, mflips=[]):
         for k in range(1, len(L.layers)):
             eqns.append([0] + [L.data["gs"][0][j] - L.data["gs"][k][j] for L in Ls])
 
-    # for i in mflips:
-    #     Lm = Ls[i]["L"]
-    #     ms = set(w for w in Lm.N2u if Lm.spin_assignment[w] == "-")
-    #     # print(f"mflip index {i}")
-    #     # Lm.show()
-
-    #     orbitms = []
-    #     while ms:
-    #         w = next(iter(ms))
-    #         orbit = set(Lm.orbit(w))
-    #         ms -= orbit
-    #         orbitms.append(orbit)
-    #     # print(f"mflip index {i}: orbitms = {orbitms}")
-
-    #     for orbitm in orbitms:
-    #         w = next(iter(orbitm))
-    #         # print(f"mflip index {i}: orbitm = {orbitm}, w={w}")
-    #         Lp = Lm.change_spin(w)
-    #         # Lp.show()
-    #         orbitp = set(Lp.orbit(w))
-    #         # print(f"mflip index {i}: orbitp = {orbitp}")
-
-    #         Lpcan = Lp.fullG_can_fixed_spins
-    #         j = 0
-    #         while (Ls[j]['L'].fullG_can_fixed_spins != Lpcan):
-    #             j += 1
-    #         ieq = [0] * (len(Ls) + 1)
-    #         ieq[i+1] = len(orbitm)
-    #         ieq[j+1] = -Bval**d/lval * len(orbitp)
-    #         ieqs.append(ieq)
-    #         print(f"mflip index {i}: constraint {len(orbitm)} * x[{i}] >= B^{d}/lam * {len(orbitp)} * x[{j}]")
-    
     # slow
     print("Generating polyhedron")
     pol = Polyhedron(ieqs=ieqs, eqns=eqns, base_ring=AA)
