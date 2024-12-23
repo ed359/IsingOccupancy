@@ -27,35 +27,27 @@ class DualFeasibility:
     lmax: str
 
 # %% Setup
-run_wolfram = False
+run_wolfram = True
 d = 3
 spin_depth = 2
-Ls = get_data(d, spin_depth).Ls[:-1] # exclude K_4 which is the last local view
+Ls = get_data(d, spin_depth).Ls # use all Ls
 gams = list(range(d-1)) # [0,...,d-2]
 
 B, l = var("B, l")
-K4 = graphs.CompleteGraph(d + 1)
-occK4 = occ(K4, B, l)
+K33 = graphs.CompleteBipartiteGraph(d,d)
+occK33 = occ(K33, B, l)
 
 tights = [
-    [15,20,21],
-    [15,16,21],
-    [8,16,21],
-    [13,16,21],
+    [0, 4, 8],
 ]
 
 dfs = [
-    DualFeasibility(0, '59/100', '1', '0', '(177*B)/200 - (267*B^2)/1000'), # True
-    DualFeasibility(0, '0', '59/100', '0', 'B*9/10'), # True
-    DualFeasibility(1, '1/10', '1/2', 'B/2', 'B*99/100'), # True
-    DualFeasibility(1, '1/2', '9/10', '3/20', 'Min[B,53/100]'), # True
-    DualFeasibility(1, '3/5', '98/100', 'B*11/50 + 35/100', 'B*12/50+ 375/1000'), # True
-    DualFeasibility(2, '1/4', '9/20', 'B*49/50', 'B*7/5-85/1000'), # True
-    DualFeasibility(2, '56/125', '3/5', 'B*99/100', '133/200 - B*13/50'), # True
-    DualFeasibility(3, '26/100', '36/100', 'B*68/50-75/1000', 'B*72/50-90/1000'), # True
+    DualFeasibility(0, '0',    '2/10', '0', 'B*3/10'),
+    DualFeasibility(0, '2/10', '4/10', '0', 'B*4/10'),
+    DualFeasibility(0, '4/10', '1',    '0', 'B*5/10'),
 ]
 
-filename = "data/d3min.wls"
+filename = "data/d3max.wls"
 with open(filename, "w") as f:
 
     f.write(
@@ -79,22 +71,22 @@ colors = PadRight[ColorData[97, "ColorList"],100,ColorData[97, "ColorList"]];
         ])
         c = vector(Ls[t].data["ps"][0] for t in tight_constraints)
         allys = Atranspose.solve_right(c)
-        ys = allys[1:] # drop y_p which we will set to occK4
+        ys = allys[1:] # drop y_p which we will set to occK33
 
         f.write(f"ineqs{i} = Table[True, {len(Ls)}];\n")
 
         for j, L in enumerate(Ls, start=1):
-            ineq = 0 <= L.data["ps"][0] - occK4 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in gams)
+            ineq = 0 >= L.data["ps"][0] - occK33 - sum(ys[k] * (L.data["gs"][0][k] - L.data["gs"][1][k]) for k in gams)
             if j-1 in tight_constraints: # Python indices are 0-based, Wolfram indices are 1-based
                 f.write(f"ineqs{i}[[{j}]] = {ineq} // Simplify;\n")
             else:
                 f.write(f"ineqs{i}[[{j}]] = {ineq};\n")
 
         f.write(f"tR{i} = Hold[ImplicitRegion[And @@ ineqs{i}, {{B,l}}]];\n")
-        f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[1]]}}]];\n")
+        f.write(f"tr{i} = Hold[RegionPlot[And @@ ineqs{i}, {{B,0,1}}, {{l,0,1}}, PlotPoints->40, MaxRecursion->4, BoundaryStyle->None, PlotStyle->{{Directive[colors[[1]],Opacity[0.5]]}}]];\n")
 
     f.write("\n")
-    f.write(f"tRall := RegionUnion @@ {{ {', '.join(f'tR{i} // ReleaseHold' for i, _ in enumerate(tights, start=1))} }};\n")
+    f.write(f'tRall := RegionUnion @@ {{ {', '.join(f"tR{i} // ReleaseHold" for i, _ in enumerate(tights, start=1))} }};\n')
     f.write(f"Print[""]\n")
 
     for i, df in enumerate(dfs, start=1):
@@ -124,7 +116,7 @@ Print["Dual Feasibility {i}: " <> ToString[ans{i}] <> " in time " <> ToString[ti
 """)
 
     f.write("\n\n")
-    f.write(f"dfRall := RegionUnion @@ {{ {', '.join(f'dfR{i}' for i, _ in enumerate(dfs, start=1))} }};\n")
+    f.write(f'dfRall := RegionUnion @@ {{ {', '.join(f"dfR{i}" for i, _ in enumerate(dfs, start=1))} }};\n')
 
     f.write("\n")
     f.write('Print["Performing dual feasibility tests..."];\n')
@@ -135,6 +127,7 @@ if run_wolfram:
     process = subprocess.Popen(["wolframscript", "-f", filename, "-print all"], stdout=subprocess.PIPE)
     for line in process.stdout:
         print(line.decode(), end='')
+
 
 
 # %%
