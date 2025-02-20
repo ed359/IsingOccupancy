@@ -29,7 +29,7 @@ def gen_local_views(d, spin_depth=1, spins=None, spin_orbits=None, forbidden_sub
     if spins is None:
         spins = [1,2,3,4]
     if spin_orbits is None:
-        spin_orbits = [[s] for s in spins]
+        spin_orbits = [[s for s in spins]]
     if forbidden_subgraphs is None:
         forbidden_subgraphs = []
     if tqdm is None:
