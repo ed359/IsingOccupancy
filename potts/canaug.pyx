@@ -25,29 +25,43 @@ from sage.plot.plot import graphics_array
 
 from local_view import LocalView
 
-def gen_local_views(d, spin_depth=1, spins=None, spin_orbits=None, verbose=False, tqdm=None):
+def gen_local_views(d, spin_depth=1, spins=None, spin_orbits=None, forbidden_subgraphs=None, verbose=False, tqdm=None):
     if spins is None:
-        spins = [0,1]
+        spins = [1,2,3,4]
     if spin_orbits is None:
         spin_orbits = [[s] for s in spins]
+    if forbidden_subgraphs is None:
+        forbidden_subgraphs = []
     if tqdm is None:
         tqdm = lambda x, *args, **kwargs: x
 
     G = Graph(1, data_structure='dense', loops=False, multiedges=False)
     data = [(d, G, [[0]], [0])]
 
+    def add_new_layer_helper(gb):
+        d, G, last_partition, last_layer = gb
+        yield from add_new_layer_gen(d, G, last_partition, last_layer, forbidden_subgraphs)
+
+    def fill_layer_helper(gb):
+        d, G, last_partition, last_layer = gb
+        yield from fill_layer_gen(d, G, last_partition, last_layer, forbidden_subgraphs)
+
+    def add_new_layer_disjoint_helper(gb):
+        d, G, last_partition, last_layer = gb
+        yield from add_new_layer_disjoint_gen(d, G, last_partition, last_layer)
+
     for i in tqdm(range(spin_depth-1)):
         if verbose:
             print(f'Adding layer {i+1} starting with {len(data)} graphs')
-        data = [y for x in data for y in add_new_layer_gen(x)]
+        data = [y for x in data for y in add_new_layer_helper(x)]
 
         if verbose:
             print(f'Filling layer {i+1} starting with {len(data)} graphs')
-        data = [y for x in data for y in fill_layer_gen(x)]
+        data = [y for x in data for y in fill_layer_helper(x)]
 
     if verbose:
         print(f'Adding layer {spin_depth} disjointly to {len(data)} graphs')
-    data = [y for x in data for y in add_new_layer_disjoint_gen(x)]
+    data = [y for x in data for y in add_new_layer_disjoint_helper(x)]
 
     if verbose:
         print(f'Assigning spins to layer {spin_depth} starting with {len(data)} graphs')
@@ -60,65 +74,64 @@ def gen_local_view_1(d, spins, spin_orbits):
 def gen_local_view_2(d, spins, spin_orbits):
     yield from gen_local_views(d, 2, spins, spin_orbits)
 
-def gen_local_views_par(d, spin_depth=1, spins=None, spin_orbits=None, verbose=False, tqdm=None):
-    if spins is None:
-        spins = [0,1]
-    if spin_orbits is None:
-        spin_orbits = [[s] for s in spins]
-    if tqdm is None:
-        tqdm = lambda x, *args, **kwargs: x
+# def gen_local_views_par(d, spin_depth=1, spins=None, spin_orbits=None, verbose=False, tqdm=None):
+#     if spins is None:
+#         spins = [0,1]
+#     if spin_orbits is None:
+#         spin_orbits = [[s] for s in spins]
+#     if tqdm is None:
+#         tqdm = lambda x, *args, **kwargs: x
 
-    G = Graph(1, data_structure='dense', loops=False, multiedges=False)
-    data = [(d, G, [[0]], [0])]
-    with ProcessPoolExecutor() as executor:
-        for i in tqdm(range(spin_depth-1)):
-            if verbose:
-                print(f'Adding layer {i+1} starting with {len(data)} graphs')
-            data = [y for ys in executor.map(add_new_layer, data) for y in ys]
+#     G = Graph(1, data_structure='dense', loops=False, multiedges=False)
+#     data = [(d, G, [[0]], [0])]
+#     with ProcessPoolExecutor() as executor:
+#         for i in tqdm(range(spin_depth-1)):
+#             if verbose:
+#                 print(f'Adding layer {i+1} starting with {len(data)} graphs')
+#             data = [y for ys in executor.map(add_new_layer, data) for y in ys]
 
-            if verbose:
-                print(f'Filling layer {i+1} starting with {len(data)} graphs')
-            data = [y for ys in executor.map(fill_layer, data) for y in ys]
+#             if verbose:
+#                 print(f'Filling layer {i+1} starting with {len(data)} graphs')
+#             data = [y for ys in executor.map(fill_layer, data) for y in ys]
 
-        if verbose:
-            print(f'Adding layer {spin_depth} disjointly to {len(data)} graphs')
-        data = [y for ys in executor.map(add_new_layer_disjoint, data) for y in ys]
+#         if verbose:
+#             print(f'Adding layer {spin_depth} disjointly to {len(data)} graphs')
+#         data = [y for ys in executor.map(add_new_layer_disjoint, data) for y in ys]
 
-        if verbose:
-            print(f'Assigning spins to layer {spin_depth} starting with {len(data)} graphs')
-        extend = lambda x: (*x, spins, spin_orbits)
-        yield from (y for ys in executor.map(assign_spins, map(extend, data)) for y in ys)
+#         if verbose:
+#             print(f'Assigning spins to layer {spin_depth} starting with {len(data)} graphs')
+#         extend = lambda x: (*x, spins, spin_orbits)
+#         yield from (y for ys in executor.map(assign_spins, map(extend, data)) for y in ys)
 
 ############
 # LAYER CODE
-def add_new_layer(gb):
-    d, G, last_partition, last_layer = gb
-    if not isinstance(G._backend, DenseGraphBackend): # Workaround for https://github.com/sagemath/sage/issues/38900
-        G = G.copy(data_structure="dense")
-    r = []
-    next_layer = []
-    for v in last_layer:
-        for w in range(d-G.degree(v)):
-            next_layer.append(G.add_vertex())
+# def add_new_layer(gb):
+#     d, G, last_partition, last_layer = gb
+#     if not isinstance(G._backend, DenseGraphBackend): # Workaround for https://github.com/sagemath/sage/issues/38900
+#         G = G.copy(data_structure="dense")
+#     r = []
+#     next_layer = []
+#     for v in last_layer:
+#         for w in range(d-G.degree(v)):
+#             next_layer.append(G.add_vertex())
     
-    partition = last_partition + [next_layer]
-    aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-    for X in canaug_new_layer(d, G, partition, last_layer, next_layer, aut_gens):
-        clean_X = copy(X)
-        clean_partition = deepcopy(partition)
-        clean_next_layer = copy(next_layer)
-        for v in next_layer:
-            if clean_X.degree(v) == 0:
-                clean_X.delete_vertex(v)
-                clean_partition[-1].remove(v)
-                clean_next_layer.remove(v)
-        if not clean_partition[-1]:
-            clean_partition.pop()
-        r.append((d, clean_X, clean_partition, clean_next_layer))
-    return r
+#     partition = last_partition + [next_layer]
+#     aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
+#     for X in canaug_new_layer(d, G, partition, last_layer, next_layer, aut_gens):
+#         clean_X = copy(X)
+#         clean_partition = deepcopy(partition)
+#         clean_next_layer = copy(next_layer)
+#         for v in next_layer:
+#             if clean_X.degree(v) == 0:
+#                 clean_X.delete_vertex(v)
+#                 clean_partition[-1].remove(v)
+#                 clean_next_layer.remove(v)
+#         if not clean_partition[-1]:
+#             clean_partition.pop()
+#         r.append((d, clean_X, clean_partition, clean_next_layer))
+#     return r
 
-def add_new_layer_gen(gb):
-    d, G, last_partition, last_layer = gb
+def add_new_layer_gen(d, G, last_partition, last_layer, forbidden_subgraphs):
     next_layer = []
     for v in last_layer:
         for w in range(d-G.degree(v)):
@@ -126,7 +139,7 @@ def add_new_layer_gen(gb):
     
     partition = last_partition + [next_layer]
     aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-    for X in canaug_new_layer(d, G, partition, last_layer, next_layer, aut_gens):
+    for X in canaug_new_layer(d, G, partition, last_layer, next_layer, aut_gens, forbidden_subgraphs):
         clean_X = copy(X)
         clean_partition = deepcopy(partition)
         clean_next_layer = copy(next_layer)
@@ -139,22 +152,21 @@ def add_new_layer_gen(gb):
             clean_partition.pop()
         yield (d, clean_X, clean_partition, clean_next_layer)
 
-def add_new_layer_disjoint(gb):
-    d, G, last_partition, last_layer = gb
-    if not isinstance(G._backend, DenseGraphBackend): # Workaround for https://github.com/sagemath/sage/issues/38900
-        G = G.copy(data_structure="dense")
-    next_layer = []
-    for v in last_layer:
-        Nv = []
-        for w in range(d-G.degree(v)):
-            Nv.append(G.add_vertex())
-        G.add_edges((v, w) for w in Nv)
-        next_layer.extend(Nv)
-    partition = deepcopy(last_partition + [next_layer])
-    return [(d, G, partition, next_layer)]
+# def add_new_layer_disjoint(gb):
+#     d, G, last_partition, last_layer = gb
+#     if not isinstance(G._backend, DenseGraphBackend): # Workaround for https://github.com/sagemath/sage/issues/38900
+#         G = G.copy(data_structure="dense")
+#     next_layer = []
+#     for v in last_layer:
+#         Nv = []
+#         for w in range(d-G.degree(v)):
+#             Nv.append(G.add_vertex())
+#         G.add_edges((v, w) for w in Nv)
+#         next_layer.extend(Nv)
+#     partition = deepcopy(last_partition + [next_layer])
+#     return [(d, G, partition, next_layer)]
 
-def add_new_layer_disjoint_gen(gb):
-    d, G, last_partition, last_layer = gb
+def add_new_layer_disjoint_gen(d, G, last_partition, last_layer):
     next_layer = []
     for v in last_layer:
         Nv = []
@@ -165,20 +177,19 @@ def add_new_layer_disjoint_gen(gb):
     partition = deepcopy(last_partition + [next_layer])
     yield (d, G, partition, next_layer)
 
-def fill_layer(gb):
-    d, G, partition, layer = gb
-    if not isinstance(G._backend, DenseGraphBackend): # Workaround for https://github.com/sagemath/sage/issues/38900
-        G = G.copy(data_structure="dense")
-    r = []
-    aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-    for X in canaug_fill_layer(d, G, partition, layer, aut_gens):
-        r.append((d, X, partition, layer))
-    return r
+# def fill_layer(gb):
+#     d, G, partition, layer = gb
+#     if not isinstance(G._backend, DenseGraphBackend): # Workaround for https://github.com/sagemath/sage/issues/38900
+#         G = G.copy(data_structure="dense")
+#     r = []
+#     aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
+#     for X in canaug_fill_layer(d, G, partition, layer, aut_gens):
+#         r.append((d, X, partition, layer))
+#     return r
 
-def fill_layer_gen(gb):
-    d, G, partition, layer = gb
+def fill_layer_gen(d, G, partition, layer, forbidden_subgraphs):
     aut_gens = search_tree(G._backend.c_graph()[0], partition, False, False)
-    for X in canaug_fill_layer(d, G, partition, layer, aut_gens):
+    for X in canaug_fill_layer(d, G, partition, layer, aut_gens, forbidden_subgraphs):
         yield (d, X, partition, layer)
 
 ##############
@@ -209,12 +220,12 @@ def assign_spins_gen(pv):
 
 #############
 # CANAUG CODE
-def canaug_new_layer(d, X, partition, last_layer, new_layer, aut_gens):
+def canaug_new_layer(d, X, partition, last_layer, new_layer, aut_gens, forbidden_subgraphs):
     cY_can:     DenseGraph
     mY:         cython.list
     upper_reps: cython.list
     uppers:     cython.set
-    e:          cython.tuple
+    e:          cython.tuple[cython.int, cython.int]
     ystar:      cython.tuple
     ystar_orig: cython.tuple
     
@@ -226,7 +237,8 @@ def canaug_new_layer(d, X, partition, last_layer, new_layer, aut_gens):
         yield X
         return
 
-    uppers = {f for f in gen_bipartite_edges(unfinished_last, unfinished_new) if not X.has_edge(f)}
+    uppers = {e for e in gen_bipartite_edges(unfinished_last, unfinished_new) if not X.has_edge(e) and 
+                                                                                 no_forbidden_subgraphs(X, e, forbidden_subgraphs)}
 
     # use the automorphism group to do some isomorphism checking
     upper_reps = find_upper_reps(aut_gens, uppers)
@@ -245,10 +257,10 @@ def canaug_new_layer(d, X, partition, last_layer, new_layer, aut_gens):
 
         mY = find_orbit(ystar_orig, Y_aut_gens)
         if e in mY:
-            yield from canaug_new_layer(d, Y, partition, last_layer, new_layer, Y_aut_gens)
+            yield from canaug_new_layer(d, Y, partition, last_layer, new_layer, Y_aut_gens, forbidden_subgraphs)
 
 
-def canaug_fill_layer(d, X, partition, layer, aut_gens):
+def canaug_fill_layer(d, X, partition, layer, aut_gens, forbidden_subgraphs):
     cY_can:     DenseGraph
     mY:         cython.list
     upper_reps: cython.list
@@ -263,7 +275,8 @@ def canaug_fill_layer(d, X, partition, layer, aut_gens):
     if not unfinished:
         return
 
-    uppers = {f for f in gen_all_edges(unfinished) if not X.has_edge(f)}
+    uppers = {e for e in gen_all_edges(unfinished) if not X.has_edge(e) and 
+                                                      no_forbidden_subgraphs(X, e, forbidden_subgraphs)}
 
     # use the automorphism group to do some isomorphism checking
     upper_reps = find_upper_reps(aut_gens, uppers)
@@ -281,7 +294,7 @@ def canaug_fill_layer(d, X, partition, layer, aut_gens):
 
         mY = find_orbit(ystar_orig, Y_aut_gens)
         if e in mY:
-            yield from canaug_fill_layer(d, Y, partition, layer, Y_aut_gens)
+            yield from canaug_fill_layer(d, Y, partition, layer, Y_aut_gens, forbidden_subgraphs)
 
 
 def canaug_assign_spins(X, partition, domain, spins, aut_gens):
@@ -411,6 +424,11 @@ def find_orbit(e: cython.tuple, aut_gens: cython.list) -> cython.list:
     lorbit.sort()
     return lorbit
 
+def no_forbidden_subgraphs(X, e, forbidden_subgraphs):
+    X.add_edge(e)
+    r = all(not H.is_subgraph(X, up_to_isomorphism=True) for H in forbidden_subgraphs)
+    X.delete_edge(e)
+    return r
 
 ##############
 # LIBRARY CODE

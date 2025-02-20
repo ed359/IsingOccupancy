@@ -16,7 +16,7 @@ from sage.rings.integer import Integer
 from dataclasses import dataclass
 from typing import List
 
-load("ising_occ.py")
+load("potts_occ.py")
 
 @dataclass
 class DualFeasibility:
