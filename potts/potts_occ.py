@@ -20,10 +20,10 @@ def mono(G, sigma):
     return sum(1 for e in G.edges(labels=False) if sigma[e[0]] == sigma[e[1]])
 
 def Z(G, b):
-    """Compute the partition function of the Ising model on a graph G with edge activity B and external field l."""
+    """Compute the partition function of the Potts model on a graph G with edge activity b."""
     return sum(
         exp(-b * mono(G, sigma))
-        for sigma in LocalView(G, ising_spins, []).gen_all_spin_assignments()
+        for sigma in LocalView(G, potts_spins, []).gen_all_spin_assignments()
     )
 
 def F(G, b):
@@ -38,41 +38,47 @@ def occ(G, b):
 def compute_probabilities(L, depth, b=None, tqdm=None):
     """Compute the probabilities for a local view L."""
     if b is None:
-        B = var("b")
-
+        b = var("b")
     u = L.u
     d = L.G.degree(u)
 
-    # Below has to change for Potts
-    # want ps[0] (or just p) to be the probability that a uniform random edge incident to u is monochromatic
-    # want for each partition d = x_1 + x_2 + ... + x_k we want the probability that 
-    # u sees those totals of inidvidual colors
-    # and same for a uniform random neighbor v of u,
+    q_parts = Partitions(d).list() # must have d <= q, so min(d,q)=d
 
-    # ps[i] is the probability that the simple random walk of length i from u terminates in a vertex which gets +
-    ps = [0 for _ in range(depth)]
-    # gs[i][j] is the probability that the simple random walk of length i from u terminates in a vertex which has j neighbors that get +
-    gs = [[0 for _ in range(d + 1)] for _ in range(depth)]
+    # p is the probability that a uniform random edge incident to u is monochromatic
+    p = 0
+    # gs[i][j] is the probability that the simple random walk of length i from u terminates in a vertex which sees the partition indexed by j
+    gs = [[0 for _ in range(len(q_parts))] for _ in range(depth)]
+
     # Z is the partition function of the local view L
     Z = 0
 
     for sigma in L.gen_all_spin_assignments(tqdm):
-        weight = B ** mono(L.G, sigma) * l ** nplus(L.G, sigma)
+        weight = exp(-b * mono(L.G, sigma))
         Z += weight
+
+        p += weight * sum(1 for v in L.G.neighbors(u) if sigma[u] == sigma[v]) / d
 
         for i in range(depth):
             Apow = L.G.adjacency_matrix()**i
+
             for v in L.G:
-                ps[i] += weight * Apow[u, v] * int(sigma[v] == "+") / d**i
-                gs[i][sum(1 for w in L.G.neighbors(v) if sigma[w] == "+")] += weight * Apow[u, v] / d**i
+                if Apow[u, v] != 0:
+                    # find the partition we see on vs neighbors
+                    count = [0 for _ in range(q+1)]
+                    for w in L.G.neighbors(v):
+                        count[sigma[w]] += 1
+                    part = [val for val in count if val != 0]; part.sort(reverse=True)
+
+                    j = q_parts.index(part)
+                    gs[i][j] += weight * Apow[u, v] / d**i
 
     # Normalize by Z at the end
+    p /= Z
     for i in range(depth):
-        ps[i] /= Z
         gs[i] = [g / Z for g in gs[i]]
 
     L.data = {
-        "ps": ps,
+        "p": p,
         "gs": gs,
         "Z": Z,
     }
