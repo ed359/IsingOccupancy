@@ -23,11 +23,15 @@ from sage.groups.perm_gps.partn_ref.data_structures cimport *
 
 from sage.plot.plot import graphics_array
 
+from sage.rings.integer import Integer
+
 from local_view import LocalView
 
 def gen_local_views(d, spin_depth=1, spins=None, spin_orbits=None, forbidden_subgraphs=None, verbose=False, tqdm=None):
     if spins is None:
         spins = [1,2,3,4]
+    if type(spins) is Integer or spins is int:
+        spins = [i for i in range(1,spins+1)]
     if spin_orbits is None:
         spin_orbits = [[s for s in spins]]
     if forbidden_subgraphs is None:

@@ -2,7 +2,7 @@ import os.path
 import subprocess
 import sys
 
-from collections import namedtuple
+from collections import namedtuple, Counter
 
 from sage.all import diff, graphs, ln, load, save, sqrt, var, matrix, vector
 from sage.numerical.mip import MixedIntegerLinearProgram
@@ -42,12 +42,12 @@ def compute_probabilities(L, depth, b=None, tqdm=None):
     u = L.u
     d = L.G.degree(u)
 
-    q_parts = Partitions(d).list() # must have d <= q, so min(d,q)=d
+    q_parts = [p for p in Partitions(d) if len(p) <= q]
 
     # p is the probability that a uniform random edge incident to u is monochromatic
     p = 0
     # gs[i][j] is the probability that the simple random walk of length i from u terminates in a vertex which sees the partition indexed by j
-    gs = [[0 for _ in range(len(q_parts))] for _ in range(depth)]
+    gs = [[0 for _ in q_parts] for _ in range(depth)]
 
     # Z is the partition function of the local view L
     Z = 0
@@ -63,12 +63,7 @@ def compute_probabilities(L, depth, b=None, tqdm=None):
 
             for v in L.G:
                 if Apow[u, v] != 0:
-                    # find the partition we see on vs neighbors
-                    count = [0 for _ in range(q+1)]
-                    for w in L.G.neighbors(v):
-                        count[sigma[w]] += 1
-                    part = [val for val in count if val != 0]; part.sort(reverse=True)
-
+                    part = sorted(Counter(sigma[w] for w in L.G.neighbors(v)).values(), reverse=True)
                     j = q_parts.index(part)
                     gs[i][j] += weight * Apow[u, v] / d**i
 

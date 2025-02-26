@@ -30,8 +30,7 @@ class DualFeasibility:
 run_wolfram = False
 d = 3
 spin_depth = 2
-Ls = get_data(d, spin_depth).Ls[:-1] # exclude K_4 which is the last local view
-gams = list(range(d-1)) # [0,...,d-2]
+Ls = get_data(d, spin_depth).Ls
 
 B, l = var("B, l")
 K4 = graphs.CompleteGraph(d + 1)
