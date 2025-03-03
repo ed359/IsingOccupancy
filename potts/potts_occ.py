@@ -7,13 +7,8 @@ from collections import namedtuple, Counter
 from sage.all import diff, graphs, ln, load, save, sqrt, var, matrix, vector
 from sage.numerical.mip import MixedIntegerLinearProgram
 
-load("local_view.py")
-load("canaug.pyx")
-
-# Ising model computations
-q = 4
-potts_spins = list(range(1,1+q))
-potts_orbits = [list(range(1,1+q))]
+load("potts_local_view.py")
+load("potts_canaug.pyx")
 
 def mono(G, sigma):
     """Count the number of monochromatic edges of a graph G under a spin assignment sigma."""
@@ -52,8 +47,8 @@ def compute_probabilities(L, depth, b=None, tqdm=None):
     # Z is the partition function of the local view L
     Z = 0
 
-    for sigma in L.gen_all_spin_assignments(tqdm):
-        weight = exp(-b * mono(L.G, sigma))
+    for cw, m, sigma in L.gen_all_spin_assignments(tqdm):
+        weight = cw*exp(-b * m)
         Z += weight
 
         p += weight * sum(1 for v in L.G.neighbors(u) if sigma[u] == sigma[v]) / d
