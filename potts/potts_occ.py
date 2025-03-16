@@ -14,20 +14,20 @@ def mono(G, sigma):
     """Count the number of monochromatic edges of a graph G under a spin assignment sigma."""
     return sum(1 for e in G.edges(labels=False) if sigma[e[0]] == sigma[e[1]])
 
-def Z(G, b):
+def Z(G, b, q_max):
     """Compute the partition function of the Potts model on a graph G with edge activity b."""
     return sum(
-        exp(-b * mono(G, sigma))
-        for sigma in LocalView(G, potts_spins, []).gen_all_spin_assignments()
+        cw*exp(-b * m)
+        for cw, m, sigma in PottsLocalView(G, q_max=q_max, spin_vertices=[]).gen_all_spin_assignments()
     )
 
-def F(G, b):
-    ZG = Z(G, b)
+def F(G, b, q_max):
+    ZG = Z(G, b, q_max)
     return ln(ZG)/G.order()
 
-def occ(G, b):
+def occ(G, b, q_max):
     varb = var("varb")
-    FG = F(G, varb)
+    FG = F(G, varb, q_max)
     return -diff(FG, varb).subs(varb=b)
 
 def compute_probabilities(L, depth, b=None, tqdm=None):
@@ -77,17 +77,20 @@ def compute_probabilities(L, depth, b=None, tqdm=None):
 # Local view data generation/loading
 LData = namedtuple("LData", ["Ls", "version"])
 DATA_VERSION = 1
-def default_filename(d, spin_depth):
+def default_filename(d, spin_depth, forbidden):
+    if len(forbidden) == 1 and forbidden[0].is_isomorphic(graphs.CompleteGraph(3)):
+        return f"data/potts_d{d}_depth{spin_depth}_triangle_free.sobj"
+        
     return f"data/potts_d{d}_depth{spin_depth}.sobj"
 
-def gen_data(d, spin_depth=2, filename=None, verbose=False, tqdm=None):
+def gen_data(d, spin_depth=2, forbidden=None, filename=None, verbose=False, tqdm=None):
     if filename is None:
-        filename = default_filename(d, spin_depth)
+        filename = default_filename(d, spin_depth, forbidden)
     
     os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     Ls = []
-    for L in gen_local_views(d, spin_depth, spins=potts_spins, spin_orbits=potts_orbits, verbose=verbose, tqdm=tqdm):
+    for L in gen_local_views(d, spin_depth, q_max=None, forbidden_subgraphs=forbidden, verbose=verbose, tqdm=tqdm):
         compute_probabilities(L, spin_depth, tqdm=tqdm)
         Ls.append(L)
     
@@ -110,115 +113,82 @@ def gen_data_par(d, spin_depth=2, filename=None, verbose=False, tqdm=None):
     save(data, filename)
     return data
 
-def load_data(d, spin_depth=2, filename=None):
+def load_data(d, spin_depth=2, forbidden=None, filename=None):
     if filename is None:
-        filename = default_filename(d, spin_depth)
+        filename = default_filename(d, spin_depth, forbidden)
 
     data = load(filename)
     return data
 
-def get_data(d, spin_depth=2, filename=None):
+def get_data(d, spin_depth=2, forbidden=None, filename=None):
     if filename is None:
-        filename = default_filename(d, spin_depth)
+        filename = default_filename(d, spin_depth, forbidden)
 
     if os.path.isfile(filename):
-        data = load_data(d, spin_depth, filename)
+        data = load_data(d, spin_depth, forbidden, filename)
         if data.version == DATA_VERSION:
             return data
 
-    return gen_data(d, spin_depth, filename)
+    return gen_data(d, spin_depth, forbidden, filename)
 
 
 # WARNING: this destructively modifies the input Ls
-def sub_Ls(Ls, Bval, lval):
+def sub_Ls(Ls, bval, qval, precision=None):
     for L in Ls:
         data = L.data
-        data["ps"] = [p.subs(B=Bval, l=lval) for p in data["ps"]]
-        data["gs"] = [[g.subs(B=Bval, l=lval) for g in gs] for gs in data["gs"]]
-        data["Z"] = data["Z"].subs(B=Bval, l=lval)
+        data["p"] = data["p"].subs(b=bval, q=qval)
+        data["gs"] = [[g.subs(b=bval, q=qval) for g in gs] for gs in data["gs"]]
+        data["Z"] = data["Z"].subs(b=bval, q=qval)
+
+        if precision != None:
+            data["p"] = data["p"].n(precision)
+            data["gs"] = [[g.n(precision) for g in gs] for gs in data["gs"]]
+            data["Z"] = data["Z"].n(precision)
 
 def triangle_count(G, u):
     return sum(1 for s in Subsets(G.neighbors(u), 2) if G.has_edge(s[0], s[1]))
 
 # linear programming
-# mflips is a list of indices for Ls we want to add constraints for by flipping a - to a +
-def gen_lp(d, spin_depth, Bval, lval, Ls=None, solver="PPL", gams=None, constraints="eq", mflips=[], maximization=False):
+def gen_lp(d, spin_depth, bval, qval, probability_precision, Ls=None, solver="PPL", constraints="eq", maximization=False):
     if Ls is None:
         Ls = get_data(d, spin_depth)
-    if gams is None:
-        gams = range(d+1)
-    sub_Ls(Ls, Bval, lval)
+    sub_Ls(Ls, bval, qval, precision=probability_precision)
 
     p = MixedIntegerLinearProgram(maximization=maximization, solver=solver)
     x = p.new_variable(nonnegative=True)
 
     if constraints == "eq":
         p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) == 1)
-        # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) == 0)
-        for j in gams:
+        
+        num_parts = len([p for p in Partitions(d) if len(p) <= qval])
+        for j in range(num_parts):
             for k in range(1, spin_depth):
                 p.add_constraint(
                     p.sum((L.data["gs"][0][j] - L.data["gs"][k][j]) * x[i] for i, L in enumerate(Ls)) == 0
                 )
 
-        # p.add_constraint(
-        #     p.sum((triangle_count(L.G, L.u)-sum(triangle_count(L.G,v) for v in L.Nu)/d)*x[i] for i, L in enumerate(Ls)) == 0
-        # )
     # elif constraints == "ge":
     #     p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) >= 1)
-    #     # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
-    #     for j in gams:
+    #     num_parts = len(Ls[0].data["gs"][0]) #this is ugly but it's the number of relevant partitions
+    #     for j in range(num_parts):
     #         p.add_constraint(
-    #             p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) >= 0
+    #             p.sum((L.data["gs"][0][j] - L.data["gs"][k][j]) * x[i] for i, L in enumerate(Ls)) >= 0
     #         )
     # else: #constraints == "le":
     #     p.add_constraint(p.sum(x[i] for i, L in enumerate(Ls)) <= 1)
-    #     # p.add_constraint(p.sum((L["pu"] - L["pNu"]) * x[i] for i, L in enumerate(Ls)) >= 0)
-    #     for j in gams:
+    #     num_parts = len(Ls[0].data["gs"][0]) #this is ugly but it's the number of relevant partitions
+    #     for j in range(num_parts):
     #         p.add_constraint(
-    #             p.sum((L["gu"][j] - L["gNu"][j]) * x[i] for i, L in enumerate(Ls)) <= 0
+    #             p.sum((L.data["gs"][0][j] - L.data["gs"][k][j]) * x[i] for i, L in enumerate(Ls)) <= 0
     #         )
 
-    # for i in mflips:
-    #     Lm = Ls[i]["L"]
-    #     ms = set(w for w in Lm.N2u if Lm.spin_assignment[w] == "-")
-    #     # print(f"mflip index {i}")
-    #     # Lm.show()
-
-    #     orbitms = []
-    #     while ms:
-    #         w = next(iter(ms))
-    #         orbit = set(Lm.orbit(w))
-    #         ms -= orbit
-    #         orbitms.append(orbit)
-    #     print(f"mflip index {i}: orbitms = {orbitms}")
-
-    #     for orbitm in orbitms:
-    #         w = next(iter(orbitm))
-    #         # print(f"mflip index {i}: orbitm = {orbitm}, w={w}")
-    #         Lp = Lm.change_spin(w)
-    #         # Lp.show()
-    #         orbitp = set(Lp.orbit(w))
-    #         # print(f"mflip index {i}: orbitp = {orbitp}")
-
-    #         Lpcan = Lp.fullG_can_fixed_spins
-    #         j = 0
-    #         while (Ls[j]['L'].fullG_can_fixed_spins != Lpcan):
-    #             j += 1
-
-    #         p.add_constraint(len(orbitm)*x[i] >= Bval**d/lval * len(orbitp) * x[j])
-    #         print(f"mflip index {i}: constraint {len(orbitm)} * x[{i}] >= B^{d}/lam * {len(orbitp)} * x[{j}]")
-    
-
-    p.set_objective(p.sum(L.data["ps"][0] * x[i] for i, L in enumerate(Ls)))
+    p.set_objective(p.sum(L.data["p"] * x[i] for i, L in enumerate(Ls)))
     return p, x
 
-def gen_lp_via_poly(d, Bval, lval, Ls=None, gams=None, mflips=[]):
+def gen_lp_via_poly(d, bval, qval, Ls=None):
     if Ls is None:
         Ls = get_data(d).Ls
-    if gams is None:
-        gams = range(d+1)
-        
+    
     Ls = sub_Ls(Ls, Bval, lval)
 
     eqns = []
@@ -226,48 +196,18 @@ def gen_lp_via_poly(d, Bval, lval, Ls=None, gams=None, mflips=[]):
 
     # probability constraint
     eqns.append([-1] + [1 for L in Ls])
-    for j in gams:
+
+    num_parts = len([p for p in Partitions(d) if len(p) <= qval])
+    for j in range(num_parts):
         for k in range(1, len(L.layers)):
             eqns.append([0] + [L.data["gs"][0][j] - L.data["gs"][k][j] for L in Ls])
 
-    # for i in mflips:
-    #     Lm = Ls[i]["L"]
-    #     ms = set(w for w in Lm.N2u if Lm.spin_assignment[w] == "-")
-    #     # print(f"mflip index {i}")
-    #     # Lm.show()
-
-    #     orbitms = []
-    #     while ms:
-    #         w = next(iter(ms))
-    #         orbit = set(Lm.orbit(w))
-    #         ms -= orbit
-    #         orbitms.append(orbit)
-    #     # print(f"mflip index {i}: orbitms = {orbitms}")
-
-    #     for orbitm in orbitms:
-    #         w = next(iter(orbitm))
-    #         # print(f"mflip index {i}: orbitm = {orbitm}, w={w}")
-    #         Lp = Lm.change_spin(w)
-    #         # Lp.show()
-    #         orbitp = set(Lp.orbit(w))
-    #         # print(f"mflip index {i}: orbitp = {orbitp}")
-
-    #         Lpcan = Lp.fullG_can_fixed_spins
-    #         j = 0
-    #         while (Ls[j]['L'].fullG_can_fixed_spins != Lpcan):
-    #             j += 1
-    #         ieq = [0] * (len(Ls) + 1)
-    #         ieq[i+1] = len(orbitm)
-    #         ieq[j+1] = -Bval**d/lval * len(orbitp)
-    #         ieqs.append(ieq)
-    #         print(f"mflip index {i}: constraint {len(orbitm)} * x[{i}] >= B^{d}/lam * {len(orbitp)} * x[{j}]")
-    
     # slow
     print("Generating polyhedron")
     pol = Polyhedron(ieqs=ieqs, eqns=eqns, base_ring=AA)
 
     print("Generating LP")
     p, x = pol.to_linear_program(solver='InteractiveLP', return_variable=True)
-    p.set_objective(p.sum(AA(-L.data["ps"][0]) * x[i] for i, L in enumerate(Ls)))
+    p.set_objective(p.sum(AA(-L.data["p"]) * x[i] for i, L in enumerate(Ls)))
     p.set_min(x, 0)
     return p, x
