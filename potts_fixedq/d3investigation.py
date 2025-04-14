@@ -7,17 +7,17 @@ q = 4
 spin_depth = 3
 forbidden = [graphs.CompleteGraph(3)]   #triangle free case
 
-#%% ~41s for depth 3 (7175 lvs)
+#%% ~41s for depth 3
 Ls = list(gen_local_views(d, spin_depth, q_max=q, forbidden_subgraphs=forbidden))
 
 #%%
-# In 3 minutes, I can calc probabilities for the first 12 lvs
+# In 3 minutes, I can calc probabilities for the first 13 lvs
 n = 1
 for L in Ls:
-    compute_probabilities(L, spin_depth)
+    compute_probabilities(L, spin_depth, q)
     print(n)
     n += 1
-    
+
 # %%
 b = var("b")
 Pet = graphs.PetersenGraph()

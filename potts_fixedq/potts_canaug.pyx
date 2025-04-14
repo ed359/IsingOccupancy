@@ -31,7 +31,7 @@ from sage.rings.integer import Integer
 
 from potts_local_view import PottsLocalView
 
-def gen_local_views(d, spin_depth=1, q_max=None, forbidden_subgraphs=None, verbose=False, tqdm=None):
+def gen_local_views(d, spin_depth, q_max, forbidden_subgraphs=None, verbose=False, tqdm=None):
     if forbidden_subgraphs is None:
         forbidden_subgraphs = []
     if tqdm is None:
