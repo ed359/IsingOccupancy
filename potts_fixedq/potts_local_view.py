@@ -113,7 +113,7 @@ class PottsLocalView(object):
         spins = range(q)
         for sigma_tuple in tqdm(product(spins, repeat=len(unassigned)), 
                                 desc="Spin assignments",
-                                total=q**len(unassigned),
+                                total=int(q**len(unassigned)),
                                 leave=False,
                                 position=1):
 

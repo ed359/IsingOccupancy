@@ -35,6 +35,59 @@ def compute_probabilities(L, depth, b=None, tqdm=None):
     if b is None:
         b = var("b")
     u = L.u
+    Nu = L.G.neighbors(u)
+    d = L.G.degree(u)
+    q = L._q
+
+    q_parts = [p for p in Partitions(d) if len(p) <= q]
+
+    # p is the probability that a uniform random edge incident to u is monochromatic
+    p = 0
+    # gs[i][j] is the probability that the simple random walk of length i from u terminates in a vertex which sees the partition indexed by j
+    gs = [[0 for _ in q_parts] for _ in range(depth)]
+
+    # Z is the partition function of the local view L
+    Z = 0
+
+    Apows = []
+    Apow = matrix.identity(L.G.order())
+    Adj = L.G.adjacency_matrix()
+    for i in range(depth):
+        Apows.append(Apow)
+        Apow = Apow * Adj
+
+    for m, sigma in L.gen_all_spin_assignments(tqdm):
+        weight = exp(-b * m)
+        Z += weight
+
+        p += weight * sum(1 for v in Nu if sigma[u] == sigma[v]) / d
+
+        for i in range(depth):
+            for v in L.G:
+                if Apows[i][u, v] != 0:
+                    part = sorted(Counter(sigma[w] for w in L.G.neighbors(v)).values(), reverse=True)
+                    j = q_parts.index(part)
+                    gs[i][j] += weight * Apows[i][u, v] / d**i
+
+    # Normalize by Z at the end
+    p /= Z
+    for i in range(depth):
+        gs[i] = [g / Z for g in gs[i]]
+
+    L.data = {
+        "p": p,
+        "gs": gs,
+        "Z": Z,
+    }
+
+def compute_probabilities_alt(L, depth, b=None, tqdm=None):
+    """Compute the probabilities for a local view L.
+       Currently only works if depth is at most 3"""
+    if b is None:
+        b = var("b")
+    u = L.u
+    Nu = L.G.neighbors(u)
+    reach_in_2 = [w for v in Nu for w in L.G.neighbors(v)] #vertices reached 2 steps from u. contains duplicates
     d = L.G.degree(u)
     q = L._q
 
@@ -52,16 +105,21 @@ def compute_probabilities(L, depth, b=None, tqdm=None):
         weight = exp(-b * m)
         Z += weight
 
-        p += weight * sum(1 for v in L.G.neighbors(u) if sigma[u] == sigma[v]) / d
+        p += weight * sum(1 for v in Nu if sigma[u] == sigma[v]) / d
 
         for i in range(depth):
-            Apow = L.G.adjacency_matrix()**i
+            reachable = [] # will be set of vertices we can reach from a random walk of length i from u
+            if(i == 0):
+                reachable = [u]
+            elif(i == 1):
+                reachable = Nu
+            else: # i == 2
+                reachable = reach_in_2
 
-            for v in L.G:
-                if Apow[u, v] != 0:
-                    part = sorted(Counter(sigma[w] for w in L.G.neighbors(v)).values(), reverse=True)
-                    j = q_parts.index(part)
-                    gs[i][j] += weight * Apow[u, v] / d**i
+            for v in reachable:
+                part = sorted(Counter(sigma[w] for w in L.G.neighbors(v)).values(), reverse=True)
+                j = q_parts.index(part)
+                gs[i][j] += weight / d**i
 
     # Normalize by Z at the end
     p /= Z
